@@ -60,7 +60,7 @@ func polorize(v reflect.Value, wb *writebuffer) error {
 	case reflect.Map:
 		return polorizeMap(v, wb)
 
-		// Struct Value (Field Ordered Pack Encoded)
+	// Struct Value (Field Ordered Pack Encoded)
 	case reflect.Struct:
 		return polorizeStruct(v, wb)
 
