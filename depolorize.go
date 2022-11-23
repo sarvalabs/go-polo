@@ -64,6 +64,7 @@ func depolorize(t reflect.Type, rb readbuffer) (any, error) {
 	}
 }
 
+// depolorizeBool decodes a bool value from a readbuffer
 func depolorizeBool(rb readbuffer) (bool, error) {
 	switch rb.wire {
 	// True Value
@@ -77,6 +78,7 @@ func depolorizeBool(rb readbuffer) (bool, error) {
 	}
 }
 
+// depolorizeString decodes a string value from a readbuffer
 func depolorizeString(rb readbuffer) (string, error) {
 	switch rb.wire {
 	// Convert []byte to string
@@ -90,6 +92,7 @@ func depolorizeString(rb readbuffer) (string, error) {
 	}
 }
 
+// depolorizeUint decodes an unsigned integer value from a readbuffer
 func depolorizeUint(rb readbuffer, kind reflect.Kind) (uint64, error) {
 	switch rb.wire {
 	case WirePosInt:
@@ -125,6 +128,7 @@ func depolorizeUint(rb readbuffer, kind reflect.Kind) (uint64, error) {
 	}
 }
 
+// depolorizeInt decodes a signed integer value from a readbuffer
 func depolorizeInt(rb readbuffer, kind reflect.Kind) (int64, error) {
 	switch rb.wire {
 	case WirePosInt, WireNegInt:
@@ -170,6 +174,7 @@ func depolorizeInt(rb readbuffer, kind reflect.Kind) (int64, error) {
 	}
 }
 
+// depolorizeFloat32 decodes a float32 value from a readbuffer
 func depolorizeFloat32(rb readbuffer) (float32, error) {
 	switch rb.wire {
 	case WireFloat:
@@ -193,6 +198,7 @@ func depolorizeFloat32(rb readbuffer) (float32, error) {
 	}
 }
 
+// depolorizeFloat64 decodes a float64 value from a readbuffer
 func depolorizeFloat64(rb readbuffer) (float64, error) {
 	switch rb.wire {
 	case WireFloat:
@@ -216,6 +222,7 @@ func depolorizeFloat64(rb readbuffer) (float64, error) {
 	}
 }
 
+// depolorizeSlice decodes a slice value of type t from a readbuffer
 func depolorizeSlice(rb readbuffer, t reflect.Type) (any, error) {
 	// Byte Slice
 	if t.Elem().Kind() == reflect.Uint8 {
@@ -277,6 +284,7 @@ func depolorizeSlice(rb readbuffer, t reflect.Type) (any, error) {
 	}
 }
 
+// depolorizeArray decodes an array value of type t from a readbuffer
 func depolorizeArray(rb readbuffer, t reflect.Type) (any, error) {
 	// Get the length of the array
 	l := t.Len()
@@ -346,7 +354,56 @@ func depolorizeArray(rb readbuffer, t reflect.Type) (any, error) {
 	}
 }
 
+// depolorizeMap decodes a map value of type t from a readbuffer
 func depolorizeMap(rb readbuffer, t reflect.Type) (any, error) {
+	// Document Object
+	if t == reflect.TypeOf(Document{}) {
+		doc := make(Document)
+
+		switch rb.wire {
+		case WireDoc:
+			// Get the next element from the load
+			load, err := rb.load()
+			if err != nil {
+				return nil, err
+			}
+
+			kt := t.Key()
+			// Iterate until loadreader is done
+			for !load.done() {
+				// Get the next element from the load (key)
+				keyElement, err := load.next()
+				if err != nil {
+					return nil, err
+				}
+
+				// Get the next element from the load (val)
+				valElement, err := load.next()
+				if err != nil {
+					return nil, err
+				}
+
+				// Depolorize the key element into the key type
+				k, err := depolorize(kt, keyElement)
+				if err != nil {
+					return nil, err
+				}
+
+				// Create a value for key
+				key := reflect.ValueOf(k).Convert(kt)
+				// Set the value data into the document for the decoded key
+				doc.Set(key.String(), valElement.data)
+			}
+
+			return doc, nil
+
+		case WireNull:
+			return reflect.New(t).Elem().Interface(), nil
+		default:
+			return nil, IncompatibleWireError{WireDoc, rb.wire}
+		}
+	}
+
 	switch rb.wire {
 	case WirePack:
 		// Convert readbuffer into a loadreader
@@ -411,6 +468,7 @@ func depolorizeMap(rb readbuffer, t reflect.Type) (any, error) {
 	}
 }
 
+// depolorizeStruct decodes a struct value of type t from a readbuffer
 func depolorizeStruct(rb readbuffer, t reflect.Type) (any, error) {
 	// Binary Integer (Big Int)
 	if t == reflect.TypeOf(*big.NewInt(0)) {
@@ -463,6 +521,56 @@ func depolorizeStruct(rb readbuffer, t reflect.Type) (any, error) {
 
 		return v.Interface(), nil
 
+	case WireDoc:
+		// Decode the wire into a Document
+		doc := make(Document)
+		if err := Depolorize(&doc, rb.bytes()); err != nil {
+			return nil, err
+		}
+
+		v := reflect.New(t).Elem()
+
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+
+			// Skip the field if it is not exported or if it
+			// is manually tagged to be skipped with a '-' tag
+			tag := field.Tag.Get("polo")
+			if !field.IsExported() || tag == "-" {
+				continue
+			}
+
+			// Determine doc key for struct field. Field name is used
+			// directly if there is no provided in the polo tag.
+			fieldName := field.Name
+			if tag != "" {
+				fieldName = tag
+			}
+
+			// Retrieve the data for the field from the document,
+			// if there is no data for the key, skip the field
+			data := doc.Get(fieldName)
+			if data == nil {
+				continue
+			}
+
+			frb, err := newreadbuffer(data)
+			if err != nil {
+				return nil, err
+			}
+
+			fv, err := depolorize(field.Type, frb)
+			if err != nil {
+				return nil, fmt.Errorf("struct field [%v.%v <%v>]: %w", t, field.Name, field.Type, err)
+			}
+
+			if fv != nil {
+				v.Field(i).Set(reflect.ValueOf(fv).Convert(field.Type))
+			}
+		}
+
+		return v.Interface(), nil
+
 	// Null Struct
 	case WireNull:
 		return nil, ErrNullStruct
@@ -471,6 +579,7 @@ func depolorizeStruct(rb readbuffer, t reflect.Type) (any, error) {
 	}
 }
 
+// depolorizePointer decodes a value of type t from a readbuffer
 func depolorizePointer(rb readbuffer, t reflect.Type) (any, error) {
 	// recursively call depolorize with the pointer element
 	v, err := depolorize(t.Elem(), rb)

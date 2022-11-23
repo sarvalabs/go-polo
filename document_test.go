@@ -207,3 +207,58 @@ func TestDocumentEncode(t *testing.T) {
 		}
 	}
 }
+
+func TestDocument_DecodeToDocument(t *testing.T) {
+	tests := []struct {
+		bytes []byte
+		doc   Document
+		err   string
+	}{
+		{
+			[]byte{13, 47, 6, 54, 98, 111, 111, 6, 102, 97, 114},
+			Document{"boo": []byte{6, 102, 97, 114}},
+			"",
+		},
+		{
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 97, 114, 3, 54, 102, 111, 111, 3, 89},
+			Document{"bar": []byte{3, 54}, "foo": []byte{3, 89}},
+			"",
+		},
+		{
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+			Document{"A": []byte{6, 102, 111, 111}, "B": []byte{6, 98, 97, 114}},
+			"",
+		},
+		{
+			[]byte{13, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
+			Document{"B": []byte{3, 64}, "foo": []byte{1}},
+			"",
+		},
+		{
+			[]byte{14, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
+			Document{},
+			"decode error: incompatible wire type. expected: document. got: pack",
+		},
+		{
+			[]byte{0},
+			nil, "",
+		},
+		{
+			[]byte{13, 15},
+			Document{},
+			"",
+		},
+	}
+
+	for _, test := range tests {
+		doc := make(Document)
+		err := Depolorize(&doc, test.bytes)
+		assert.Equal(t, test.doc, doc)
+
+		if test.err == "" {
+			assert.Nil(t, err)
+		} else {
+			assert.EqualError(t, err, test.err)
+		}
+	}
+}
