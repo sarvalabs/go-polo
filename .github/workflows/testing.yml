@@ -3,11 +3,11 @@ name: Go Tests
 
 # Workflow Triggers
 on:
-  # Triggered on push to the main and develop branches
+  # Triggered on push to all branches
   push:
     branches: 
       - main
-      - develop
+      - '**'
     
    # Triggered on manual dispatch
   workflow_dispatch:
