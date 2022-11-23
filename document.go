@@ -1,7 +1,10 @@
 package polo
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 )
 
 // Document is a representation for a string indexed collection of encoded object data.
@@ -73,4 +76,89 @@ func (doc Document) SetObject(key string, object any) error {
 	// Insert the wire data for the key
 	doc.Set(key, data)
 	return nil
+}
+
+// DocumentEncode encodes an object into its POLO bytes such that it can be decoded as a Document.
+// The object must either be a map with string keys, a struct or a pointer to either.
+// 	- Map objects will use the same key in the object for Document keys
+// 	- Struct objects will use the field name as declared unless overridden
+// 	with a polo struct tag specifying the field name to use. Private struct fields
+//  and fields marked to be skipped will be ignored while converting into a Document.
+//
+// Returns an error if the object is not a supported type, is a nil pointer
+// or if any of the element/field types cannot be serialized with Polorize()
+func DocumentEncode(object any) ([]byte, error) {
+	switch v := reflect.ValueOf(object); v.Kind() {
+	// Pointers (unwrap and recursively call DocumentEncode)
+	case reflect.Ptr:
+		if v.IsNil() {
+			return nil, errors.New("could not encode into document: unsupported type: nil pointer")
+		}
+
+		return DocumentEncode(v.Elem().Interface())
+
+	// Maps
+	case reflect.Map:
+		// Verify that map has string keys
+		if v.Type().Key().Kind() != reflect.String {
+			return nil, errors.New("could not encode into document: unsupported type: map type with non string key")
+		}
+
+		// Sort the map keys
+		keys := v.MapKeys()
+		sort.Slice(keys, sorter(keys))
+
+		var dwb writebuffer
+		for _, k := range keys {
+			// Write the key into the buffer
+			dwb.write(WireWord, []byte(k.String()))
+			// Polorize the value and write into the buffer
+			data, err := Polorize(v.MapIndex(k).Interface())
+			if err != nil {
+				return nil, fmt.Errorf("could not encode into document: %w", err)
+			}
+
+			dwb.write(WireWord, data)
+		}
+
+		return prepend(byte(WireDoc), dwb.load()), nil
+
+	// Structs
+	case reflect.Struct:
+		t := v.Type()
+
+		var dwb writebuffer
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+
+			// Skip the field if it is not exported or if it
+			// is manually tagged to be skipped with a '-' tag
+			tag := field.Tag.Get("polo")
+			if !field.IsExported() || tag == "-" {
+				continue
+			}
+
+			// Determine doc key for struct field. Field name is used
+			// directly if there is no provided in the polo tag.
+			fieldName := field.Name
+			if tag != "" {
+				fieldName = tag
+			}
+
+			// Write the field name into the buffer
+			dwb.write(WireWord, []byte(fieldName))
+			// Polorize the field value and write into the buffer
+			data, err := Polorize(v.Field(i).Interface())
+			if err != nil {
+				return nil, fmt.Errorf("could not encode into document: %w", err)
+			}
+
+			dwb.write(WireWord, data)
+		}
+
+		return prepend(byte(WireDoc), dwb.load()), nil
+
+	default:
+		return nil, errors.New("could not encode into document: unsupported type")
+	}
 }

@@ -127,3 +127,83 @@ func TestDocument_GetObject(t *testing.T) {
 	err = doc.GetObject("bar", &foo)
 	assert.EqualError(t, err, "document value could not be decoded for key 'bar': decode error: incompatible wire type. expected: posint. got: word")
 }
+
+func TestDocumentEncode(t *testing.T) {
+	type ObjectA struct {
+		A string
+		B string
+	}
+
+	type ObjectB struct {
+		A string `polo:"-"`
+		B uint64
+		C bool `polo:"foo"`
+		d float32
+	}
+
+	type ObjectC struct {
+		A chan int
+		B string
+	}
+
+	nilObject := func() *ObjectA { return nil }
+
+	tests := []struct {
+		object any
+		err    string
+		bytes  []byte
+	}{
+		{
+			map[string]string{"boo": "far"},
+			"",
+			[]byte{13, 47, 6, 54, 98, 111, 111, 6, 102, 97, 114},
+		},
+		{
+			map[string]uint64{"bar": 54, "foo": 89},
+			"",
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 97, 114, 3, 54, 102, 111, 111, 3, 89},
+		},
+		{
+			ObjectA{"foo", "bar"},
+			"",
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+		},
+		{
+			&ObjectA{"foo", "bar"}, "",
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+		},
+		{
+			ObjectA{"foo", "bar"},
+			"",
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+		},
+		{
+			ObjectB{"foo", 64, false, 54.2},
+			"",
+			[]byte{13, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
+		},
+
+		{
+			map[string]chan int{"foo": make(chan int)},
+			"could not encode into document: unsupported type: chan int [chan]", nil,
+		},
+		{
+			ObjectC{make(chan int), "foo"},
+			"could not encode into document: unsupported type: chan int [chan]", nil,
+		},
+		{nilObject(), "could not encode into document: unsupported type: nil pointer", nil},
+		{nil, "could not encode into document: unsupported type", nil},
+		{map[uint64]uint64{0: 56}, "could not encode into document: unsupported type: map type with non string key", nil},
+	}
+
+	for _, test := range tests {
+		bytes, err := DocumentEncode(test.object)
+		if test.err == "" {
+			assert.Nil(t, err)
+			assert.Equal(t, test.bytes, bytes)
+		} else {
+			assert.EqualError(t, err, test.err)
+			assert.Nil(t, bytes)
+		}
+	}
+}
