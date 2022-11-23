@@ -894,6 +894,12 @@ func TestIncompatibleWireType(t *testing.T) {
 			DecodeError{"struct field [polo.IntegerObject.A <int>]: " +
 				"incompatible wire type. expected: posint. got: false"},
 		},
+		{
+			[]byte{13, 47, 6, 22, 65, 1},
+			&IntegerObject{},
+			DecodeError{"struct field [polo.IntegerObject.A <int>]: " +
+				"incompatible wire type. expected: posint. got: false"},
+		},
 	}
 
 	for tno, test := range tests {
