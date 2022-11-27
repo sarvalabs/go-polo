@@ -38,7 +38,7 @@ func (err IncompatibleWireError) Error() string {
 	return fmt.Sprintf("incompatible wire type. expected: %v. got: %v", err.expected, err.actual)
 }
 
-// DecodeError is an error for when an error occurs during decode/wire parsing
+// DecodeError is an error for when an error occurs during decode
 type DecodeError struct {
 	msg string
 }
@@ -46,4 +46,14 @@ type DecodeError struct {
 // Error implements the error interface for DecodeError
 func (err DecodeError) Error() string {
 	return fmt.Sprintf("decode error: %v", err.msg)
+}
+
+// EncodeError is an error for when an error occurs during encode
+type EncodeError struct {
+	msg string
+}
+
+// Error implements the error interface for EncodeError
+func (err EncodeError) Error() string {
+	return fmt.Sprintf("encode error: %v", err.msg)
 }
