@@ -45,7 +45,7 @@ func (doc Document) Is(key string, kind WireType) bool {
 	return data[0] == byte(kind)
 }
 
-// GetObject retrieves some object for a given from a Document.
+// GetObject retrieves some object for some given key from a Document.
 // The data for the given key is decoded from its POLO form into the given object which must be a pointer.
 // Returns an error if there is no data for the key or if the data could not be decoded into the given object.
 func (doc Document) GetObject(key string, object any) error {
@@ -63,7 +63,7 @@ func (doc Document) GetObject(key string, object any) error {
 	return nil
 }
 
-// SetObject inserts some object for a given key into a Document.
+// SetObject inserts some object for some given key into a Document.
 // The given object is encoded into its POLO form and inserted, overwriting any existing data.
 // Returns an error if the given object cannot be serialized with Polorize().
 func (doc Document) SetObject(key string, object any) error {
