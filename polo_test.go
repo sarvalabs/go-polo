@@ -560,7 +560,7 @@ func TestInterface(t *testing.T) {
 	wire, err := Polorize(x)
 
 	require.Nil(t, wire)
-	require.EqualError(t, err, "unsupported type: polo.SimpleInterface [interface]")
+	require.EqualError(t, err, "encode error: unsupported type: polo.SimpleInterface [interface]")
 }
 
 func TestUnsupported(t *testing.T) {
@@ -568,31 +568,31 @@ func TestUnsupported(t *testing.T) {
 
 	// Channels
 	_, err = Polorize(make(chan string))
-	require.EqualError(t, err, "unsupported type: chan string [chan]")
+	require.EqualError(t, err, "encode error: unsupported type: chan string [chan]")
 
 	// Functions
 	_, err = Polorize(new(func(string)))
-	require.EqualError(t, err, "unsupported type: func(string) [func]")
+	require.EqualError(t, err, "encode error: unsupported type: func(string) [func]")
 
 	// Slice of Unsupported Types
 	_, err = Polorize(make([]func(string), 2))
-	require.EqualError(t, err, "unsupported type: func(string) [func]")
+	require.EqualError(t, err, "encode error: unsupported type: func(string) [func]")
 
 	// Array of Unsupported Types
 	_, err = Polorize(new([2]chan string))
-	require.EqualError(t, err, "unsupported type: chan string [chan]")
+	require.EqualError(t, err, "encode error: unsupported type: chan string [chan]")
 
 	// Map with Unsupported Type for Keys
 	_, err = Polorize(map[SimpleInterface]string{"foo": "bar", "boo": "far"})
-	require.EqualError(t, err, "unsupported type: polo.SimpleInterface [interface]")
+	require.EqualError(t, err, "encode error: unsupported type: polo.SimpleInterface [interface]")
 
 	// Map with Unsupported Type for Keys
 	_, err = Polorize(map[[2]SimpleInterface]string{[2]SimpleInterface{"foo", "fon"}: "bar", [2]SimpleInterface{"boo", "bon"}: "far"})
-	require.EqualError(t, err, "unsupported type: polo.SimpleInterface [interface]")
+	require.EqualError(t, err, "encode error: unsupported type: polo.SimpleInterface [interface]")
 
 	// Map with Unsupported Type for Values
 	_, err = Polorize(map[string]chan int{"foo": make(chan int)})
-	require.EqualError(t, err, "unsupported type: chan int [chan]")
+	require.EqualError(t, err, "encode error: unsupported type: chan int [chan]")
 }
 
 type SkipObject struct {
@@ -658,7 +658,44 @@ func TestEmpty(t *testing.T) {
 	testObject(t, x)
 }
 
-func TestNull(t *testing.T) {
+func TestNullObject(t *testing.T) {
+	t.Run("Slice", func(t *testing.T) {
+		var x []string
+		require.Nil(t, x)
+
+		wire, err := Polorize(x)
+		assert.Nil(t, err)
+		assert.Equal(t, wire, []byte{0})
+	})
+
+	t.Run("Map", func(t *testing.T) {
+		var x map[string]uint64
+		require.Nil(t, x)
+
+		wire, err := Polorize(x)
+		assert.Nil(t, err)
+		assert.Equal(t, wire, []byte{0})
+	})
+
+	t.Run("Struct", func(t *testing.T) {
+		var x *IntegerObject
+		require.Nil(t, x)
+
+		wire, err := Polorize(x)
+		assert.Nil(t, err)
+		assert.Equal(t, wire, []byte{0})
+	})
+
+	t.Run("Any", func(t *testing.T) {
+		var x any
+		require.Nil(t, x)
+
+		_, err := Polorize(x)
+		assert.EqualError(t, err, "encode error: unsupported type: cannot encode abstract nil")
+	})
+}
+
+func TestNullWire(t *testing.T) {
 	var err error
 	wire := []byte{0}
 

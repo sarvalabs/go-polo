@@ -12,7 +12,7 @@ import (
 
 // polorize accepts a reflect.Value and writebuffer
 // and encodes the value into the writebuffer
-func polorize(v reflect.Value, wb *writebuffer) error {
+func polorize(v reflect.Value, wb *writebuffer) (err error) {
 	switch kind := v.Kind(); kind {
 
 	// Pointer Value (unwrap and polorize)
@@ -66,7 +66,15 @@ func polorize(v reflect.Value, wb *writebuffer) error {
 
 	// Unsupported Type
 	default:
-		return fmt.Errorf("unsupported type: %v [%v]", v.Type(), v.Type().Kind())
+		// Create a recovery handler to check if v.Type() panicked.
+		// This will occur if v is zero Value for an abstract nil.
+		defer func() {
+			if recover() != nil {
+				err = EncodeError{msg: "unsupported type: cannot encode abstract nil"}
+			}
+		}()
+
+		return EncodeError{fmt.Sprintf("unsupported type: %v [%v]", v.Type(), v.Type().Kind())}
 	}
 }
 
