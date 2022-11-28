@@ -954,7 +954,7 @@ func TestMalformed(t *testing.T) {
 		{
 			[]byte{14, 78, 3, 3, 3, 3},
 			IntegerObject{},
-			ErrObjectNotPtr,
+			DecodeError{ErrObjectNotPtr.Error()},
 		},
 		{
 			[]byte{3, 255, 255, 255, 255, 255, 255, 255, 255},

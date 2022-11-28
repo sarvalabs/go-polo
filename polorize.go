@@ -2,6 +2,7 @@ package polo
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -70,11 +71,11 @@ func polorize(v reflect.Value, wb *writebuffer) (err error) {
 		// This will occur if v is zero Value for an abstract nil.
 		defer func() {
 			if recover() != nil {
-				err = EncodeError{msg: "unsupported type: cannot encode abstract nil"}
+				err = errors.New("unsupported type: cannot encode abstract nil")
 			}
 		}()
 
-		return EncodeError{fmt.Sprintf("unsupported type: %v [%v]", v.Type(), v.Type().Kind())}
+		return fmt.Errorf("unsupported type: %v [%v]", v.Type(), v.Type().Kind())
 	}
 }
 

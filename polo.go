@@ -8,7 +8,7 @@ func Polorize(object any) ([]byte, error) {
 	var wb writebuffer
 	// Serialize the object into a writebuffer
 	if err := polorize(reflect.ValueOf(object), &wb); err != nil {
-		return nil, err
+		return nil, EncodeError{err.Error()}
 	}
 
 	// Return the bytes of the writebuffer
@@ -21,7 +21,7 @@ func Depolorize(object any, b []byte) error {
 	// Reflect the object and check if it is a pointer
 	v := reflect.ValueOf(object)
 	if v.Kind() != reflect.Ptr {
-		return ErrObjectNotPtr
+		return DecodeError{ErrObjectNotPtr.Error()}
 	}
 
 	// Create a new readbuffer from the given byte slice
