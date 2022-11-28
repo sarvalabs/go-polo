@@ -1,20 +1,85 @@
 package polo
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// nolint:lll
+func ExampleDocumentEncode() {
+	type Fruit struct {
+		Name  string
+		Cost  int      `polo:"cost"`
+		Alias []string `polo:"alias"`
+	}
+
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	wire, err := DocumentEncode(orange)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	fmt.Println(wire)
+
+	// Output:
+	// [13 175 1 6 70 182 1 246 1 166 2 246 2 78 97 109 101 6 111 114 97 110 103 101 99 111 115 116 3 1 44 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+}
+
+// nolint:lll
+func ExampleDocument_DecodeToDocument() {
+	wire := []byte{
+		13, 175, 1, 6, 70, 182, 1, 246, 1, 166, 2, 246, 2, 78, 97, 109, 101, 6, 111, 114, 97,
+		110, 103, 101, 99, 111, 115, 116, 3, 1, 44, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1,
+		116, 97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
+	}
+
+	doc := make(Document)
+	if err := Depolorize(&doc, wire); err != nil {
+		fmt.Println("error:", err)
+	}
+
+	fmt.Println(doc)
+
+	// Output:
+	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
+}
+
+func ExampleDocument_DecodeToStruct() {
+	type Fruit struct {
+		Name  string
+		Cost  int      `polo:"cost"`
+		Alias []string `polo:"alias"`
+	}
+
+	wire := []byte{
+		13, 175, 1, 6, 70, 182, 1, 246, 1, 166, 2, 246, 2, 78, 97, 109, 101, 6, 111, 114, 97,
+		110, 103, 101, 99, 111, 115, 116, 3, 1, 44, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1,
+		116, 97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
+	}
+
+	object := new(Fruit)
+	if err := Depolorize(object, wire); err != nil {
+		fmt.Println("error:", err)
+	}
+
+	fmt.Println(object)
+
+	// Output:
+	// &{orange 300 [tangerine mandarin]}
+}
+
 func TestDocument_Bytes(t *testing.T) {
 	tests := []struct {
 		doc  Document
 		wire []byte
 	}{
-		{Document{}, []byte{14, 15}},
-		{Document{"foo": []byte{1, 0, 1, 0}}, []byte{14, 47, 6, 54, 102, 111, 111, 1, 0, 1, 0}},
-		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{2, 1, 2, 1}}, []byte{14, 95, 6, 54, 118, 166, 1, 98, 97, 114, 2, 1, 2, 1, 102, 111, 111, 1, 0, 1, 0}},
+		{Document{}, []byte{13, 15}},
+		{Document{"foo": []byte{1, 0, 1, 0}}, []byte{13, 47, 6, 54, 102, 111, 111, 6, 1, 0, 1, 0}},
+		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{2, 1, 2, 1}}, []byte{13, 111, 6, 54, 134, 1, 182, 1, 98, 97, 114, 6, 2, 1, 2, 1, 102, 111, 111, 6, 1, 0, 1, 0}},
 	}
 
 	for _, test := range tests {

@@ -18,7 +18,7 @@ func (doc Document) Size() int {
 
 // Bytes returns the POLO wire representation of a Document
 func (doc Document) Bytes() []byte {
-	data, _ := Polorize(doc)
+	data, _ := DocumentEncode(doc)
 	return data
 }
 
