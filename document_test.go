@@ -12,9 +12,9 @@ func TestDocument_Bytes(t *testing.T) {
 		doc  Document
 		wire []byte
 	}{
-		{Document{}, []byte{14, 15}},
-		{Document{"foo": []byte{1, 0, 1, 0}}, []byte{14, 47, 6, 54, 102, 111, 111, 1, 0, 1, 0}},
-		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{2, 1, 2, 1}}, []byte{14, 95, 6, 54, 118, 166, 1, 98, 97, 114, 2, 1, 2, 1, 102, 111, 111, 1, 0, 1, 0}},
+		{Document{}, []byte{13, 15}},
+		{Document{"foo": []byte{1, 0, 1, 0}}, []byte{13, 47, 6, 54, 102, 111, 111, 6, 1, 0, 1, 0}},
+		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{2, 1, 2, 1}}, []byte{13, 111, 6, 54, 134, 1, 182, 1, 98, 97, 114, 6, 2, 1, 2, 1, 102, 111, 111, 6, 1, 0, 1, 0}},
 	}
 
 	for _, test := range tests {
