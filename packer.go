@@ -51,3 +51,67 @@ func (pack *Packer) PackWire(wire []byte) error {
 func (pack *Packer) Bytes() []byte {
 	return prepend(byte(WirePack), pack.wb.load())
 }
+
+// Unpacker is pack decoder that can continuously decode objects from a POLO wire.
+// Elements are retrieved in the encoded field order.
+type Unpacker struct {
+	load *loadreader
+}
+
+// NewUnpacker initializes and returns a new Unpacker object for the given wire.
+// Returns an error if the wire has a malformed tag or is not a compound.
+func NewUnpacker(wire []byte) (*Unpacker, error) {
+	// Create a new readbuffer from the wire
+	rb, err := newreadbuffer(wire)
+	if err != nil {
+		return nil, UnpackError{err.Error()}
+	}
+
+	// Convert readbuffer into a loadreader
+	load, err := rb.load()
+	if err != nil {
+		return nil, UnpackError{err.Error()}
+	}
+
+	return &Unpacker{load: load}, nil
+}
+
+// Unpack unpacks and decodes an element into the given object.
+// Returns an error if there are elements left to unpack, if the object is
+// not a pointer or if the element cannot be decoded into the given object.
+func (unpack *Unpacker) Unpack(object any) error {
+	// Unpack the wire element from Unpacker
+	element, err := unpack.UnpackWire()
+	if err != nil {
+		return err
+	}
+
+	// Decode the element into the object
+	if err = Depolorize(object, element); err != nil {
+		return UnpackError{err.Error()}
+	}
+
+	return nil
+}
+
+// UnpackWire unpacks some encoded data from the Unpacker.
+// Returns an error if there are elements left to unpack or if the buffer is malformed
+func (unpack *Unpacker) UnpackWire() ([]byte, error) {
+	// Check if there are elements left in the buffer
+	if unpack.Done() {
+		return nil, UnpackError{"no elements left"}
+	}
+
+	// Load the next element from the loadreader
+	buffer, err := unpack.load.next()
+	if err != nil {
+		return nil, UnpackError{err.Error()}
+	}
+
+	return buffer.bytes(), nil
+}
+
+// Done returns whether all elements have been unpacked.
+func (unpack Unpacker) Done() bool {
+	return unpack.load.done()
+}
