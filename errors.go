@@ -57,3 +57,23 @@ type EncodeError struct {
 func (err EncodeError) Error() string {
 	return fmt.Sprintf("encode error: %v", err.msg)
 }
+
+// PackError is an error for when an error occurs during packing
+type PackError struct {
+	msg string
+}
+
+// Error implements the error interface for PackError
+func (err PackError) Error() string {
+	return fmt.Sprintf("pack error: %v", err.msg)
+}
+
+// UnpackError is an error for when an error occurs during unpacking
+type UnpackError struct {
+	msg string
+}
+
+// Error implements the error interface for UnpackError
+func (err UnpackError) Error() string {
+	return fmt.Sprintf("unpack error: %v", err.msg)
+}

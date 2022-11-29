@@ -68,7 +68,10 @@ func newreadbuffer(b []byte) (readbuffer, error) {
 // bytes returns the full readbuffer as slice of bytes.
 // It prepends its wiretype to rest of the data.
 func (rb readbuffer) bytes() []byte {
-	return prepend(byte(rb.wire), rb.data)
+	rbytes := make([]byte, len(rb.data))
+	copy(rbytes, rb.data)
+
+	return prepend(byte(rb.wire), rbytes)
 }
 
 // load returns a loadreader from a readbuffer.

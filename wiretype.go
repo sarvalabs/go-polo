@@ -74,10 +74,20 @@ func (wiretype WireType) String() string {
 // IsNull returns whether a given wiretype is null.
 // A wiretype is null if it is WireNull, has a value greater than 15 or is between 8 and 12 (reserved)
 func (wiretype WireType) IsNull() bool {
-	if wiretype > 15 || wiretype == WireNull || (wiretype >= 8 && wiretype <= 12) {
+	if wiretype == WireNull || !wiretype.IsValid() {
 		return true
 	} else {
 		return false
+	}
+}
+
+// IsValid returns whether a wiretype is valid.
+// A wiretype is valid if its value is less than 15 and not one of the reserved types
+func (wiretype WireType) IsValid() bool {
+	if wiretype > 15 || (wiretype >= 8 && wiretype <= 12) {
+		return false
+	} else {
+		return true
 	}
 }
 
