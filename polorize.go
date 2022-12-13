@@ -229,13 +229,30 @@ func polorizeMap(value reflect.Value, wb *writebuffer) error {
 	keys := value.MapKeys()
 	sort.Slice(keys, sorter(keys))
 
+	// Check if value is a polo.Document, if it is, we must write the data directly
+	// into the buffer (with appropriate conversions) and tag the load as a WireDoc
+	if value.Type() == reflect.TypeOf(Document{}) {
+		var dwb writebuffer
+		// Serialize each key (string) and value (bytes)
+		for _, k := range keys {
+			// Write the key into the buffer
+			dwb.write(WireWord, []byte(k.String()))
+			// Write the value into the buffer
+			dwb.write(WireWord, value.MapIndex(k).Bytes())
+		}
+
+		wb.write(WireDoc, dwb.load())
+		return nil
+	}
+
 	var mwb writebuffer
 	// Serialize each key and its value into the writebuffer
 	for _, k := range keys {
+		// Polorize the key into the buffer
 		if err := polorize(k, &mwb); err != nil {
 			return err
 		}
-
+		// Polorize the value into the buffer
 		if err := polorize(value.MapIndex(k), &mwb); err != nil {
 			return err
 		}
