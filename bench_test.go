@@ -46,7 +46,9 @@ func BenchmarkDocument(b *testing.B) {
 		E: 45.23,
 	}
 
-	docwire, _ := DocumentEncode(object)
+	document, _ := DocumentEncode(object)
+	docwire := document.Bytes()
+
 	newObject := new(MixedObject)
 	newDocument := make(Document)
 

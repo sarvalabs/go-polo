@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 )
 
 // Document is a representation for a string indexed collection of encoded object data.
@@ -18,7 +17,7 @@ func (doc Document) Size() int {
 
 // Bytes returns the POLO wire representation of a Document
 func (doc Document) Bytes() []byte {
-	data, _ := DocumentEncode(doc)
+	data, _ := Polorize(doc)
 	return data
 }
 
@@ -87,7 +86,7 @@ func (doc Document) SetObject(key string, object any) error {
 //
 // Returns an error if the object is not a supported type, is a nil pointer
 // or if any of the element/field types cannot be serialized with Polorize()
-func DocumentEncode(object any) ([]byte, error) {
+func DocumentEncode(object any) (Document, error) {
 	switch v := reflect.ValueOf(object); v.Kind() {
 	// Pointers (unwrap and recursively call DocumentEncode)
 	case reflect.Ptr:
@@ -104,30 +103,27 @@ func DocumentEncode(object any) ([]byte, error) {
 			return nil, errors.New("could not encode into document: unsupported type: map type with non string key")
 		}
 
-		// Sort the map keys
-		keys := v.MapKeys()
-		sort.Slice(keys, sorter(keys))
+		// Create a new Document object with enough space for the map elements
+		doc := make(Document, v.Len())
 
-		var dwb writebuffer
-		for _, k := range keys {
-			// Write the key into the buffer
-			dwb.write(WireWord, []byte(k.String()))
-			// Polorize the value and write into the buffer
-			data, err := Polorize(v.MapIndex(k).Interface())
-			if err != nil {
+		// For each key in the map, encode the value and set it with the string key
+		for _, k := range v.MapKeys() {
+			if err := doc.SetObject(k.String(), v.MapIndex(k).Interface()); err != nil {
 				return nil, fmt.Errorf("could not encode into document: %w", err)
 			}
-
-			dwb.write(WireWord, data)
 		}
 
-		return prepend(byte(WireDoc), dwb.load()), nil
+		return doc, nil
 
 	// Structs
 	case reflect.Struct:
 		t := v.Type()
 
-		var dwb writebuffer
+		// Create a new Document object with enough space for the struct fields
+		doc := make(Document, v.NumField())
+
+		// For each struct field that is exported and not skipped, encode
+		// the value and set it with the field name (or custom field key)
 		for i := 0; i < t.NumField(); i++ {
 			field := t.Field(i)
 
@@ -145,18 +141,12 @@ func DocumentEncode(object any) ([]byte, error) {
 				fieldName = tag
 			}
 
-			// Write the field name into the buffer
-			dwb.write(WireWord, []byte(fieldName))
-			// Polorize the field value and write into the buffer
-			data, err := Polorize(v.Field(i).Interface())
-			if err != nil {
+			if err := doc.SetObject(fieldName, v.Field(i).Interface()); err != nil {
 				return nil, fmt.Errorf("could not encode into document: %w", err)
 			}
-
-			dwb.write(WireWord, data)
 		}
 
-		return prepend(byte(WireDoc), dwb.load()), nil
+		return doc, nil
 
 	default:
 		return nil, errors.New("could not encode into document: unsupported type")
