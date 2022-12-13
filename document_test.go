@@ -18,23 +18,31 @@ func ExampleDocumentEncode() {
 
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
 
-	wire, err := DocumentEncode(orange)
+	document, err := DocumentEncode(orange)
 	if err != nil {
 		fmt.Println("error:", err)
 	}
 
-	fmt.Println(wire)
+	fmt.Println("Document:", document)
+
+	wire, err := Polorize(document)
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	fmt.Println("Serialized:", wire)
 
 	// Output:
-	// [13 175 1 6 70 182 1 246 1 166 2 246 2 78 97 109 101 6 111 114 97 110 103 101 99 111 115 116 3 1 44 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+	// Document: map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
+	// Serialized: [13 175 1 6 70 182 1 134 2 230 4 166 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
 }
 
 // nolint:lll
 func ExampleDocument_DecodeToDocument() {
 	wire := []byte{
-		13, 175, 1, 6, 70, 182, 1, 246, 1, 166, 2, 246, 2, 78, 97, 109, 101, 6, 111, 114, 97,
-		110, 103, 101, 99, 111, 115, 116, 3, 1, 44, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1,
-		116, 97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
+		13, 175, 1, 6, 70, 182, 1, 134, 2, 230, 4, 166, 5, 78, 97, 109, 101, 6, 111, 114, 97,
+		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
+		105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110, 99, 111, 115, 116, 3, 1, 44,
 	}
 
 	doc := make(Document)
@@ -56,9 +64,9 @@ func ExampleDocument_DecodeToStruct() {
 	}
 
 	wire := []byte{
-		13, 175, 1, 6, 70, 182, 1, 246, 1, 166, 2, 246, 2, 78, 97, 109, 101, 6, 111, 114, 97,
-		110, 103, 101, 99, 111, 115, 116, 3, 1, 44, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1,
-		116, 97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
+		13, 175, 1, 6, 70, 182, 1, 134, 2, 230, 4, 166, 5, 78, 97, 109, 101, 6, 111, 114, 97,
+		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
+		105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110, 99, 111, 115, 116, 3, 1, 44,
 	}
 
 	object := new(Fruit)
@@ -78,8 +86,8 @@ func TestDocument_Bytes(t *testing.T) {
 		wire []byte
 	}{
 		{Document{}, []byte{13, 15}},
-		{Document{"foo": []byte{1, 0, 1, 0}}, []byte{13, 47, 6, 54, 102, 111, 111, 6, 1, 0, 1, 0}},
-		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{2, 1, 2, 1}}, []byte{13, 111, 6, 54, 134, 1, 182, 1, 98, 97, 114, 6, 2, 1, 2, 1, 102, 111, 111, 6, 1, 0, 1, 0}},
+		{Document{"foo": []byte{6, 1, 0, 1, 0}}, []byte{13, 47, 6, 54, 102, 111, 111, 6, 1, 0, 1, 0}},
+		{Document{"foo": []byte{3, 1, 0, 1, 0}, "bar": []byte{6, 2, 1, 2, 1}}, []byte{13, 111, 6, 54, 134, 1, 182, 1, 98, 97, 114, 6, 2, 1, 2, 1, 102, 111, 111, 3, 1, 0, 1, 0}},
 	}
 
 	for _, test := range tests {
@@ -215,60 +223,58 @@ func TestDocumentEncode(t *testing.T) {
 
 	tests := []struct {
 		object any
-		err    string
+		doc    Document
 		bytes  []byte
+		err    string
 	}{
 		{
 			map[string]string{"boo": "far"},
-			"",
-			[]byte{13, 47, 6, 54, 98, 111, 111, 6, 102, 97, 114},
+			Document{"boo": []byte{0x6, 102, 97, 114}},
+			[]byte{13, 47, 6, 54, 98, 111, 111, 6, 102, 97, 114}, "",
 		},
 		{
-			map[string]uint64{"bar": 54, "foo": 89},
-			"",
-			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 97, 114, 3, 54, 102, 111, 111, 3, 89},
-		},
-		{
-			ObjectA{"foo", "bar"},
-			"",
-			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
-		},
-		{
-			&ObjectA{"foo", "bar"}, "",
-			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+			map[string]int64{"bar": 54, "foo": -89},
+			Document{"bar": []byte{3, 54}, "foo": []byte{4, 89}},
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 97, 114, 3, 54, 102, 111, 111, 4, 89}, "",
 		},
 		{
 			ObjectA{"foo", "bar"},
-			"",
-			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
+			Document{"A": []byte{0x6, 102, 111, 111}, "B": []byte{0x6, 98, 97, 114}},
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114}, "",
+		},
+		{
+			&ObjectA{"foo", "bar"},
+			Document{"A": []byte{0x6, 102, 111, 111}, "B": []byte{0x6, 98, 97, 114}},
+			[]byte{13, 79, 6, 22, 86, 102, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114}, "",
 		},
 		{
 			ObjectB{"foo", 64, false, 54.2},
-			"",
-			[]byte{13, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
+			Document{"B": []byte{3, 64}, "foo": []byte{1}},
+			[]byte{13, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1}, "",
 		},
 
 		{
-			map[string]chan int{"foo": make(chan int)},
-			"could not encode into document: encode error: unsupported type: chan int [chan]", nil,
+			map[string]chan int{"foo": make(chan int)}, nil, nil,
+			"could not encode into document: document value could not be encoded for key 'foo': encode error: unsupported type: chan int [chan]",
 		},
 		{
-			ObjectC{make(chan int), "foo"},
-			"could not encode into document: encode error: unsupported type: chan int [chan]", nil,
+			ObjectC{make(chan int), "foo"}, nil, nil,
+			"could not encode into document: document value could not be encoded for key 'A': encode error: unsupported type: chan int [chan]",
 		},
-		{nilObject(), "could not encode into document: unsupported type: nil pointer", nil},
-		{nil, "could not encode into document: unsupported type", nil},
-		{map[uint64]uint64{0: 56}, "could not encode into document: unsupported type: map type with non string key", nil},
+		{nilObject(), nil, nil, "could not encode into document: unsupported type: nil pointer"},
+		{nil, nil, nil, "could not encode into document: unsupported type"},
+		{map[uint64]uint64{0: 56}, nil, nil, "could not encode into document: unsupported type: map type with non string key"},
 	}
 
 	for _, test := range tests {
-		bytes, err := DocumentEncode(test.object)
+		doc, err := DocumentEncode(test.object)
 		if test.err == "" {
 			assert.Nil(t, err)
-			assert.Equal(t, test.bytes, bytes)
+			assert.Equal(t, test.doc, doc)
+			assert.Equal(t, test.bytes, doc.Bytes())
 		} else {
 			assert.EqualError(t, err, test.err)
-			assert.Nil(t, bytes)
+			assert.Nil(t, doc)
 		}
 	}
 }
