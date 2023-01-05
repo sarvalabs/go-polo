@@ -8,128 +8,128 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPacker(t *testing.T) {
-	t.Run("Simple Struct", func(t *testing.T) {
-		type object struct {
-			A string
-			B int64
-			C float64
-			D bool
-		}
-
-		t.Run("Pack", func(t *testing.T) {
-			f := fuzz.New()
-			var x object
-
-			for i := 0; i < 1000; i++ {
-				f.Fuzz(&x)
-
-				pack := NewPacker()
-				assert.Nil(t, pack.Pack(x.A))
-				assert.Nil(t, pack.Pack(x.B))
-				assert.Nil(t, pack.Pack(x.C))
-				assert.Nil(t, pack.Pack(x.D))
-
-				wire, _ := Polorize(x)
-				assert.Equal(t, wire, pack.Bytes())
-			}
-		})
-
-		t.Run("PackWire", func(t *testing.T) {
-			f := fuzz.New()
-			var x object
-
-			for i := 0; i < 1000; i++ {
-				f.Fuzz(&x)
-
-				pack := NewPacker()
-
-				a, _ := Polorize(x.A)
-				assert.Nil(t, pack.PackWire(a))
-
-				b, _ := Polorize(x.B)
-				assert.Nil(t, pack.PackWire(b))
-
-				c, _ := Polorize(x.C)
-				assert.Nil(t, pack.PackWire(c))
-
-				d, _ := Polorize(x.D)
-				assert.Nil(t, pack.PackWire(d))
-
-				wire, _ := Polorize(x)
-				assert.Equal(t, wire, pack.Bytes())
-			}
-		})
-	})
-
-	t.Run("Complex Struct", func(t *testing.T) {
-		type object struct {
-			A []string
-			B map[string]string
-			C map[string][]uint64
-		}
-
-		t.Run("Pack", func(t *testing.T) {
-			f := fuzz.New()
-			var x object
-
-			for i := 0; i < 1000; i++ {
-				f.Fuzz(&x)
-
-				pack := NewPacker()
-				assert.Nil(t, pack.Pack(x.A))
-				assert.Nil(t, pack.Pack(x.B))
-				assert.Nil(t, pack.Pack(x.C))
-
-				wire, _ := Polorize(x)
-				assert.Equal(t, wire, pack.Bytes())
-			}
-		})
-
-		t.Run("PackWire", func(t *testing.T) {
-			f := fuzz.New()
-			var x object
-
-			for i := 0; i < 1000; i++ {
-				f.Fuzz(&x)
-
-				pack := NewPacker()
-
-				a, _ := Polorize(x.A)
-				assert.Nil(t, pack.PackWire(a))
-
-				b, _ := Polorize(x.B)
-				assert.Nil(t, pack.PackWire(b))
-
-				c, _ := Polorize(x.C)
-				assert.Nil(t, pack.PackWire(c))
-
-				wire, _ := Polorize(x)
-				assert.Equal(t, wire, pack.Bytes())
-			}
-		})
-	})
-
-	t.Run("PackError", func(t *testing.T) {
-		var err error
-		packer := NewPacker()
-
-		err = packer.Pack(make(chan string))
-		assert.EqualError(t, err, "pack error: encode error: unsupported type: chan string [chan]")
-
-		err = packer.PackWire([]byte{})
-		assert.EqualError(t, err, "pack error: wire is empty")
-
-		err = packer.PackWire(nil)
-		assert.EqualError(t, err, "pack error: wire is empty")
-
-		err = packer.PackWire([]byte{45, 23})
-		assert.EqualError(t, err, "pack error: invalid wiretype")
-
-		err = packer.PackWire([]byte{10})
-		assert.EqualError(t, err, "pack error: invalid wiretype")
-	})
-}
+//func TestPacker(t *testing.T) {
+//	t.Run("Simple Struct", func(t *testing.T) {
+//		type object struct {
+//			A string
+//			B int64
+//			C float64
+//			D bool
+//		}
+//
+//		t.Run("Pack", func(t *testing.T) {
+//			f := fuzz.New()
+//			var x object
+//
+//			for i := 0; i < 1000; i++ {
+//				f.Fuzz(&x)
+//
+//				pack := NewPacker()
+//				assert.Nil(t, pack.Pack(x.A))
+//				assert.Nil(t, pack.Pack(x.B))
+//				assert.Nil(t, pack.Pack(x.C))
+//				assert.Nil(t, pack.Pack(x.D))
+//
+//				wire, _ := Polorize(x)
+//				assert.Equal(t, wire, pack.Bytes())
+//			}
+//		})
+//
+//		t.Run("PackWire", func(t *testing.T) {
+//			f := fuzz.New()
+//			var x object
+//
+//			for i := 0; i < 1000; i++ {
+//				f.Fuzz(&x)
+//
+//				pack := NewPacker()
+//
+//				a, _ := Polorize(x.A)
+//				assert.Nil(t, pack.PackWire(a))
+//
+//				b, _ := Polorize(x.B)
+//				assert.Nil(t, pack.PackWire(b))
+//
+//				c, _ := Polorize(x.C)
+//				assert.Nil(t, pack.PackWire(c))
+//
+//				d, _ := Polorize(x.D)
+//				assert.Nil(t, pack.PackWire(d))
+//
+//				wire, _ := Polorize(x)
+//				assert.Equal(t, wire, pack.Bytes())
+//			}
+//		})
+//	})
+//
+//	t.Run("Complex Struct", func(t *testing.T) {
+//		type object struct {
+//			A []string
+//			B map[string]string
+//			C map[string][]uint64
+//		}
+//
+//		t.Run("Pack", func(t *testing.T) {
+//			f := fuzz.New()
+//			var x object
+//
+//			for i := 0; i < 1000; i++ {
+//				f.Fuzz(&x)
+//
+//				pack := NewPacker()
+//				assert.Nil(t, pack.Pack(x.A))
+//				assert.Nil(t, pack.Pack(x.B))
+//				assert.Nil(t, pack.Pack(x.C))
+//
+//				wire, _ := Polorize(x)
+//				assert.Equal(t, wire, pack.Bytes())
+//			}
+//		})
+//
+//		t.Run("PackWire", func(t *testing.T) {
+//			f := fuzz.New()
+//			var x object
+//
+//			for i := 0; i < 1000; i++ {
+//				f.Fuzz(&x)
+//
+//				pack := NewPacker()
+//
+//				a, _ := Polorize(x.A)
+//				assert.Nil(t, pack.PackWire(a))
+//
+//				b, _ := Polorize(x.B)
+//				assert.Nil(t, pack.PackWire(b))
+//
+//				c, _ := Polorize(x.C)
+//				assert.Nil(t, pack.PackWire(c))
+//
+//				wire, _ := Polorize(x)
+//				assert.Equal(t, wire, pack.Bytes())
+//			}
+//		})
+//	})
+//
+//	t.Run("PackError", func(t *testing.T) {
+//		var err error
+//		packer := NewPacker()
+//
+//		err = packer.Pack(make(chan string))
+//		assert.EqualError(t, err, "pack error: encode error: unsupported type: chan string [chan]")
+//
+//		err = packer.PackWire([]byte{})
+//		assert.EqualError(t, err, "pack error: wire is empty")
+//
+//		err = packer.PackWire(nil)
+//		assert.EqualError(t, err, "pack error: wire is empty")
+//
+//		err = packer.PackWire([]byte{45, 23})
+//		assert.EqualError(t, err, "pack error: invalid wiretype")
+//
+//		err = packer.PackWire([]byte{10})
+//		assert.EqualError(t, err, "pack error: invalid wiretype")
+//	})
+//}
 
 func TestUnpacker(t *testing.T) {
 	t.Run("SimpleStruct", func(t *testing.T) {

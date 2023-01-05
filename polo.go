@@ -5,14 +5,14 @@ import "reflect"
 // Polorize serializes an object into its POLO byte form.
 // Returns an error if object is an unsupported type such as functions or channels.
 func Polorize(object any) ([]byte, error) {
-	var wb writebuffer
+	polorizer := NewPolorizer()
 	// Serialize the object into a writebuffer
-	if err := polorize(reflect.ValueOf(object), &wb); err != nil {
+	if err := polorizer.polorizeValue(reflect.ValueOf(object)); err != nil {
 		return nil, EncodeError{err.Error()}
 	}
 
 	// Return the bytes of the writebuffer
-	return wb.bytes(), nil
+	return polorizer.wb.bytes(), nil
 }
 
 // Depolorize deserializes a POLO encoded byte slice into an object.
