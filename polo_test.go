@@ -10,16 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleOne() {
-	var x *big.Int
-
-	wire, _ := Polorize(x)
-	fmt.Println(wire)
-
-	// Output:
-	//
-}
-
 // nolint:lll
 func ExamplePolorize() {
 	type Fruit struct {

@@ -10,9 +10,10 @@ import (
 // writebuffer is a write-only byte buffer that appends to a head and body
 // buffer simultaneously. It can be instantiated without a constructor
 type writebuffer struct {
-	head   []byte
-	body   []byte
-	offset uint64
+	head    []byte
+	body    []byte
+	offset  uint64
+	counter uint64
 }
 
 // write appends v to the body of the writebuffer and a varint tag describing its offset and the given WireType.
@@ -20,7 +21,11 @@ type writebuffer struct {
 func (wb *writebuffer) write(w WireType, v []byte) {
 	wb.head = appendVarint(wb.head, (wb.offset<<4)|uint64(w))
 	wb.body = append(wb.body, v...)
+
+	// Increment the offset by the number of bytes written to the body
 	wb.offset += uint64(len(v))
+	// Increment counter to represent the number of written elements
+	wb.counter++
 }
 
 // bytes returns the contents of the writebuffer as a single slice of bytes.

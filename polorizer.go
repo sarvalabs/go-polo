@@ -21,15 +21,31 @@ func NewPolorizer() *Polorizer {
 	return &Polorizer{wb: &writebuffer{}}
 }
 
-// Pack returns the contents of the Polorizer as a pack-encoded POLO bytes.
-func (polorizer *Polorizer) Pack() []byte {
-	// Create a new writebuffer
-	var wb *writebuffer
+func (polorizer *Polorizer) Bytes() []byte {
+	switch polorizer.wb.counter {
+	case 0:
+		return []byte{0}
+	case 1:
+		return polorizer.wb.bytes()
+	default:
+		return polorizer.Packed()
+	}
+}
+
+func (polorizer *Polorizer) Packed() []byte {
+	// Declare a new writebuffer
+	var wb writebuffer
 	// Write the contents of the polorized buffer
 	// into the writebuffer and tag with WirePack
-	wb.write(WirePack, polorizer.wb.bytes())
+	wb.write(WirePack, polorizer.wb.load())
 
 	return wb.bytes()
+}
+
+// Polorize encodes a value into the Polorizer.
+// Encodes the object based on its type using the Go reflection.
+func (polorizer *Polorizer) Polorize(value any) error {
+	return polorizer.polorizeValue(reflect.ValueOf(value))
 }
 
 // PolorizeNull encodes a null value into the Polorizer.
@@ -242,6 +258,7 @@ func (polorizer *Polorizer) polorizeByteArrayValue(value reflect.Value) {
 // The value must be an array or slice and is encoded as element pack encoded data.
 func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
 	array := NewPolorizer()
+
 	// Serialize each element into the writebuffer
 	for i := 0; i < value.Len(); i++ {
 		if err := array.polorizeValue(value.Index(i)); err != nil {
