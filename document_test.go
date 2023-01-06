@@ -162,7 +162,7 @@ func TestDocument_SetObject(t *testing.T) {
 	assert.Equal(t, []byte{6, 104, 101, 108, 108, 111}, doc.Get("bar"))
 
 	err = doc.SetObject("far", make(chan int))
-	assert.EqualError(t, err, "document value could not be encoded for key 'far': encode error: unsupported type: chan int [chan]")
+	assert.EqualError(t, err, "document value could not be encoded for key 'far': incompatible value error: unsupported type: chan int [chan]")
 }
 
 func TestDocument_GetObject(t *testing.T) {
@@ -255,11 +255,11 @@ func TestDocumentEncode(t *testing.T) {
 
 		{
 			map[string]chan int{"foo": make(chan int)}, nil, nil,
-			"could not encode into document: document value could not be encoded for key 'foo': encode error: unsupported type: chan int [chan]",
+			"could not encode into document: document value could not be encoded for key 'foo': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{
 			ObjectC{make(chan int), "foo"}, nil, nil,
-			"could not encode into document: document value could not be encoded for key 'A': encode error: unsupported type: chan int [chan]",
+			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{nilObject(), nil, nil, "could not encode into document: unsupported type: nil pointer"},
 		{nil, nil, nil, "could not encode into document: unsupported type"},

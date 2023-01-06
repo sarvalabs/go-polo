@@ -48,26 +48,6 @@ func (err DecodeError) Error() string {
 	return fmt.Sprintf("decode error: %v", err.msg)
 }
 
-// EncodeError is an error for when an error occurs during encode
-type EncodeError struct {
-	msg string
-}
-
-// Error implements the error interface for EncodeError
-func (err EncodeError) Error() string {
-	return fmt.Sprintf("encode error: %v", err.msg)
-}
-
-// PackError is an error for when an error occurs during packing
-type PackError struct {
-	msg string
-}
-
-// Error implements the error interface for PackError
-func (err PackError) Error() string {
-	return fmt.Sprintf("pack error: %v", err.msg)
-}
-
 // UnpackError is an error for when an error occurs during unpacking
 type UnpackError struct {
 	msg string
@@ -76,4 +56,14 @@ type UnpackError struct {
 // Error implements the error interface for UnpackError
 func (err UnpackError) Error() string {
 	return fmt.Sprintf("unpack error: %v", err.msg)
+}
+
+// IncompatibleValueError is an error for when an incompatible value is used for encoding
+type IncompatibleValueError struct {
+	msg string
+}
+
+// Error implements the error interface for IncompatibleValueError
+func (err IncompatibleValueError) Error() string {
+	return fmt.Sprintf("incompatible value error: %v", err.msg)
 }

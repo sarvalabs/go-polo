@@ -6,9 +6,10 @@ import "reflect"
 // Returns an error if object is an unsupported type such as functions or channels.
 func Polorize(object any) ([]byte, error) {
 	polorizer := NewPolorizer()
-	// Serialize the object into a writebuffer
-	if err := polorizer.polorizeValue(reflect.ValueOf(object)); err != nil {
-		return nil, EncodeError{err.Error()}
+
+	// Polorize the object
+	if err := polorizer.Polorize(object); err != nil {
+		return nil, err
 	}
 
 	// Return the bytes of the writebuffer

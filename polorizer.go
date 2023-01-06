@@ -2,7 +2,6 @@ package polo
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -11,7 +10,8 @@ import (
 	"sort"
 )
 
-// Polorizer is an encoding buffer
+// Polorizer is an encoding buffer that can sequentially polorize objects into it.
+// It can be collapsed into its bytes with Bytes() or Packed().
 type Polorizer struct {
 	wb *writebuffer
 }
@@ -21,6 +21,10 @@ func NewPolorizer() *Polorizer {
 	return &Polorizer{wb: &writebuffer{}}
 }
 
+// Bytes returns the contents of the Polorizer as bytes.
+//  - If no objects were polorized, it returns a WireNull wire
+//  - If only one object was polorized, it returns the contents directly
+//  - If more than one object was polorized, it returns the contents in a packed wire.
 func (polorizer *Polorizer) Bytes() []byte {
 	switch polorizer.wb.counter {
 	case 0:
@@ -32,6 +36,7 @@ func (polorizer *Polorizer) Bytes() []byte {
 	}
 }
 
+// Packed returns the contents of the Polorizer as bytes after packing it and tagging with WirePack.
 func (polorizer *Polorizer) Packed() []byte {
 	// Declare a new writebuffer
 	var wb writebuffer
@@ -170,7 +175,7 @@ func (polorizer *Polorizer) PolorizeArray(value any) error {
 
 	default:
 		// Not an array or slice
-		return errors.New("PolorizeArray: value is not an array or slice")
+		return IncompatibleValueError{"value is not an array or slice"}
 	}
 
 	return polorizer.polorizeArrayValue(v)
@@ -183,7 +188,7 @@ func (polorizer *Polorizer) PolorizeArray(value any) error {
 func (polorizer *Polorizer) PolorizeMap(value any) error {
 	v := reflect.ValueOf(value)
 	if v.Kind() != reflect.Map {
-		return errors.New("PolorizeMap: value is not a map")
+		return IncompatibleValueError{"value is not a map"}
 	}
 
 	// Nil Map
@@ -234,8 +239,8 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 // Returns an error if value is not a struct or if its fields cannot be encoded.
 func (polorizer *Polorizer) PolorizeStruct(value any) error {
 	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Map {
-		return errors.New("PolorizeStruct: value is not a struct")
+	if v.Kind() != reflect.Struct {
+		return IncompatibleValueError{"value is not a struct"}
 	}
 
 	return polorizer.polorizeStructValue(v)
@@ -421,11 +426,11 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// This will occur if v is zero Value for an abstract nil.
 		defer func() {
 			if recover() != nil {
-				err = errors.New("unsupported type: cannot encode abstract nil")
+				err = IncompatibleValueError{"unsupported type: cannot encode abstract nil"}
 			}
 		}()
 
-		return fmt.Errorf("unsupported type: %v [%v]", value.Type(), value.Type().Kind())
+		return IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", value.Type(), value.Type().Kind())}
 	}
 
 	return nil
@@ -476,8 +481,6 @@ func sorter(keys []reflect.Value) func(int, int) bool {
 
 				return result < 0
 			}
-
-			return false
 		}
 
 		panic("unsupported key compare")
