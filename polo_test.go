@@ -1,6 +1,7 @@
 package polo
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -731,7 +732,7 @@ func TestNullObject(t *testing.T) {
 		require.Nil(t, x)
 
 		_, err := Polorize(x)
-		assert.EqualError(t, err, "incompatible value error: unsupported type: cannot encode abstract nil")
+		assert.EqualError(t, err, "incompatible value error: unsupported type: cannot encode untyped nil")
 	})
 }
 
@@ -859,12 +860,7 @@ func TestExcessIntegerData(t *testing.T) {
 		err := Depolorize(test.object, test.wire)
 		if test.signed {
 			assert.EqualError(t, err,
-				fmt.Sprintf("decode error: excess data for %v-bit signed integer", test.size),
-				"[%v] Input: %v", tno, test.wire)
-		} else {
-			assert.EqualError(t, err,
-				fmt.Sprintf("decode error: excess data for %v-bit integer", test.size),
-				"[%v] Input: %v", tno, test.wire)
+				fmt.Sprintf("incompatible value error: excess data for %v-bit integer", test.size), "[%v] Input: %v", tno, test.wire)
 		}
 	}
 }
@@ -878,22 +874,22 @@ func TestMalformedFloatData(t *testing.T) {
 		{
 			[]byte{7, 111, 114, 97, 110, 103, 101, 103, 101, 120},
 			new(float32),
-			DecodeError{"malformed data for 32-bit float"},
+			IncompatibleWireError{"malformed data for 32-bit float"},
 		},
 		{
 			[]byte{7, 111, 114, 97},
 			new(float64),
-			DecodeError{"malformed data for 64-bit float"},
+			IncompatibleWireError{"malformed data for 64-bit float"},
 		},
 		{
 			[]byte{7, 255, 255, 0, 0},
 			new(float32),
-			DecodeError{"float is not a number"},
+			IncompatibleValueError{"float is not a number"},
 		},
 		{
 			[]byte{7, 255, 255, 0, 0, 0, 0, 0, 0},
 			new(float64),
-			DecodeError{"float is not a number"},
+			IncompatibleValueError{"float is not a number"},
 		},
 	}
 
@@ -912,70 +908,67 @@ func TestIncompatibleWireType(t *testing.T) {
 		{
 			[]byte{2},
 			new(float32),
-			DecodeError{"incompatible wire type. expected: float. got: true"},
+			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, float}"},
 		},
 		{
 			[]byte{4, 1},
 			new(float64),
-			DecodeError{"incompatible wire type. expected: float. got: negint"},
+			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, float}"},
 		},
 		{
 			[]byte{7, 111, 114, 97, 110, 103, 101},
 			new(string),
-			DecodeError{"incompatible wire type. expected: word. got: float"},
+			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{3, 44},
 			new(bool),
-			DecodeError{"incompatible wire type. expected: true. got: posint"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, true, false}"},
 		},
 		{
 			[]byte{2},
 			new(uint64),
-			DecodeError{"incompatible wire type. expected: posint. got: true"},
+			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, posint}"},
 		},
 		{
 			[]byte{4, 45, 22},
 			new([]string),
-			DecodeError{"incompatible wire type. expected: pack. got: negint"},
+			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{5, 45, 22},
 			new([4]string),
-			DecodeError{"incompatible wire type. expected: pack. got: bigint"},
+			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{5, 45, 22},
 			new(map[string]string),
-			DecodeError{"incompatible wire type. expected: pack. got: bigint"},
+			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{3, 45, 22},
 			new(big.Int),
-			DecodeError{"incompatible wire type. expected: bigint. got: posint"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, bigint}"},
 		},
 		{
 			[]byte{3, 45, 22},
 			new(*IntegerObject),
-			DecodeError{"incompatible wire type. expected: pack. got: posint"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack, document}"},
 		},
 		{
 			[]byte{14, 95, 3, 3, 3, 3, 3},
 			&WordObject{},
-			DecodeError{"struct field [polo.WordObject.A <string>]: " +
-				"incompatible wire type. expected: word. got: posint"},
+			IncompatibleWireError{"struct field [polo.WordObject.A <string>]: incompatible wire: unexpected wiretype 'posint'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{14, 95, 1, 0, 0, 0, 0},
 			&IntegerObject{},
-			DecodeError{"struct field [polo.IntegerObject.A <int>]: " +
-				"incompatible wire type. expected: posint. got: false"},
+			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
 			[]byte{13, 47, 6, 22, 65, 1},
 			&IntegerObject{},
-			DecodeError{"struct field [polo.IntegerObject.A <int>]: " +
-				"incompatible wire type. expected: posint. got: false"},
+			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 	}
 
@@ -994,38 +987,37 @@ func TestMalformed(t *testing.T) {
 		{
 			[]byte{14, 78, 3, 3, 3, 3},
 			IntegerObject{},
-			DecodeError{ErrObjectNotPtr.Error()},
+			ErrObjectNotPtr,
 		},
 		{
 			[]byte{3, 255, 255, 255, 255, 255, 255, 255, 255},
 			new(int64),
-			DecodeError{"overflow for signed integer"},
+			IncompatibleValueError{"overflow for signed integer"},
 		},
 		{
 			[]byte{255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 93, 3, 3, 3, 3, 3},
 			&IntegerObject{},
-			DecodeError{"malformed tag: varint overflows 64-bit integer"},
+			MalformedTagError{errVarintOverflow.Error()},
 		},
 		{
 			[]byte{6, 255, 255, 255},
 			new([2]byte),
-			DecodeError{"mismatched data length for byte array"},
+			IncompatibleWireError{"mismatched data length for byte array"},
 		},
-
 		{
 			[]byte{14, 78, 3, 3, 3, 3},
 			&IntegerObject{},
-			DecodeError{"load convert fail: missing load tag"},
+			errors.New("load convert fail: missing load tag"),
 		},
 		{
 			[]byte{14, 255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 3, 3, 3, 3, 3},
 			&IntegerObject{},
-			DecodeError{"load convert fail: malformed tag: varint overflows 64-bit integer"},
+			errors.New("load convert fail: malformed tag: varint overflows 64-bit integer"),
 		},
 		{
 			[]byte{14, 79, 3, 3, 3, 3, 0, 0, 0, 0},
 			&IntegerObject{},
-			DecodeError{"loadreader exhausted"},
+			IncompatibleWireError{fmt.Sprintf("struct field [polo.IntegerObject.E <int64>]: %v", ErrExhausted)},
 		},
 	}
 

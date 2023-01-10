@@ -198,7 +198,7 @@ func TestDocument_GetObject(t *testing.T) {
 	// Attempt to retrieve object from a field with wrong type from Document.
 	// Test error string
 	err = doc.GetObject("bar", &foo)
-	assert.EqualError(t, err, "document value could not be decoded for key 'bar': decode error: incompatible wire type. expected: posint. got: word")
+	assert.EqualError(t, err, "document value could not be decoded for key 'bar': incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}")
 }
 
 func TestDocumentEncode(t *testing.T) {
@@ -308,7 +308,7 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 		{
 			[]byte{14, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
 			Document{},
-			"decode error: incompatible wire type. expected: document. got: pack",
+			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}",
 		},
 		{
 			[]byte{0},

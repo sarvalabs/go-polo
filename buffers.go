@@ -10,10 +10,8 @@ import (
 // writebuffer is a write-only byte buffer that appends to a head and body
 // buffer simultaneously. It can be instantiated without a constructor
 type writebuffer struct {
-	head    []byte
-	body    []byte
-	offset  uint64
-	counter uint64
+	head, body      []byte
+	offset, counter uint64
 }
 
 // write appends v to the body of the writebuffer and a varint tag describing its offset and the given WireType.
@@ -149,6 +147,16 @@ func newloadreader(head, body []byte) *loadreader {
 func (lr *loadreader) done() bool {
 	// loadreader is done if the noff is set to -1
 	return lr.noff == -1
+}
+
+// peek returns the WireType of the next element along with a boolean.
+// Returns (WireNull, false) if there are no elements left in the loadreader.
+func (lr *loadreader) peek() (WireType, bool) {
+	if lr.done() {
+		return WireNull, false
+	}
+
+	return lr.nw, true
 }
 
 // next returns the next element from the loadreader.
