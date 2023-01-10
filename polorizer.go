@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"math/bits"
 	"reflect"
 	"sort"
 )
@@ -59,6 +58,18 @@ func (polorizer *Polorizer) PolorizeNull() {
 	polorizer.wb.write(WireNull, nil)
 }
 
+// PolorizeBytes encodes a bytes value into the Polorizer.
+// Encodes the bytes as is with the wire type being WireWord.
+func (polorizer *Polorizer) PolorizeBytes(value []byte) {
+	polorizer.wb.write(WireWord, value)
+}
+
+// PolorizeString encodes a string value into the Polorizer.
+// Encodes the string as its UTF-8 encoded bytes with the wire type being WireWord.
+func (polorizer *Polorizer) PolorizeString(value string) {
+	polorizer.wb.write(WireWord, []byte(value))
+}
+
 // PolorizeBool encodes a bool value into the Polorizer.
 // Encodes the boolean as either WireTrue or WireFalse, depending on its value.
 func (polorizer *Polorizer) PolorizeBool(value bool) {
@@ -68,18 +79,6 @@ func (polorizer *Polorizer) PolorizeBool(value bool) {
 	}
 
 	polorizer.wb.write(wiretype, nil)
-}
-
-// PolorizeString encodes a string value into the Polorizer.
-// Encodes the string as its UTF-8 encoded bytes with the wire type being WireWord.
-func (polorizer *Polorizer) PolorizeString(value string) {
-	polorizer.wb.write(WireWord, []byte(value))
-}
-
-// PolorizeBytes encodes a bytes value into the Polorizer.
-// Encodes the bytes as is with the wire type being WireWord.
-func (polorizer *Polorizer) PolorizeBytes(value []byte) {
-	polorizer.wb.write(WireWord, value)
 }
 
 // PolorizeUint encodes a signed integer value into the Polorizer.
@@ -93,7 +92,7 @@ func (polorizer *Polorizer) PolorizeUint(value uint64) {
 	var buffer [8]byte
 
 	binary.BigEndian.PutUint64(buffer[:], value)
-	polorizer.wb.write(WirePosInt, buffer[8-intsize(value):])
+	polorizer.wb.write(WirePosInt, buffer[8-sizeInteger(value):])
 }
 
 // PolorizeInt encodes a signed integer value into the Polorizer.
@@ -120,7 +119,7 @@ func (polorizer *Polorizer) PolorizeInt(value int64) {
 	}
 
 	binary.BigEndian.PutUint64(buffer[:], unsigned)
-	polorizer.wb.write(wiretype, buffer[8-intsize(unsigned):])
+	polorizer.wb.write(wiretype, buffer[8-sizeInteger(unsigned):])
 }
 
 // PolorizeFloat32 encodes a single point precision float into the Polorizer.
@@ -366,7 +365,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Float64:
 		polorizer.PolorizeFloat64(value.Float())
 
-	// Slice Value (Pack Encoded)
+	// Slice Value
 	case reflect.Slice:
 		// Nil Slice
 		if value.IsNil() {
@@ -382,7 +381,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 		return polorizer.polorizeArrayValue(value)
 
-	// Array Value (Pack Encoded)
+	// Array Value
 	case reflect.Array:
 		// Byte Array
 		if value.Type().Elem().Kind() == reflect.Uint8 {
@@ -422,24 +421,14 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// Unsupported Type
 	default:
-		// Create a recovery handler to check if v.Type() panicked.
-		// This will occur if v is zero Value for an abstract nil.
-		defer func() {
-			if recover() != nil {
-				err = IncompatibleValueError{"unsupported type: cannot encode abstract nil"}
-			}
-		}()
+		if value == zeroVal {
+			return IncompatibleValueError{"unsupported type: cannot encode untyped nil"}
+		}
 
 		return IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", value.Type(), value.Type().Kind())}
 	}
 
 	return nil
-}
-
-// intsize returns the min number of bytes
-// required to represent an unsigned 64-bit integer.
-func intsize(v uint64) int {
-	return (bits.Len64(v) + 8 - 1) / 8
 }
 
 // sorter is used by the sort package to sort a slice of reflect.Value objects.

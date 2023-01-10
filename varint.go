@@ -2,9 +2,28 @@ package polo
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"math/bits"
 )
+
+// varint errors
+var (
+	errVarintTerminated = errors.New("varint terminated prematurely")
+	errVarintOverflow   = errors.New("varint overflows 64-bit integer")
+)
+
+// isBitSize returns whether x is a valid bit-size.
+// Must be a power of 2 between 8 and 64. (8, 16, 32, 64)
+func isBitSize(x int) bool {
+	return (x != 0) && ((x & (x - 1)) == 0) && (x <= 64) && (x >= 8)
+}
+
+// sizeInteger returns the min number of bytes
+// required to represent an unsigned 64-bit integer.
+func sizeInteger(v uint64) int {
+	return (bits.Len64(v) + 8 - 1) / 8
+}
 
 // sizeVarint returns the length of an encoded varint slice of bytes for a given uint64.
 func sizeVarint(v uint64) int {
