@@ -12,6 +12,8 @@ var (
 	// It acts as a marker for encoding/decoding nil values.
 	zeroVal = reflect.ValueOf(nil)
 
+	// ErrNullPack is an error for when a WireNull is attempted to be converted to a Depolorizer
+	ErrNullPack = errors.New("null pack element")
 	// ErrObjectNotPtr is an error for when a non pointer object is passed to the Depolorize function
 	ErrObjectNotPtr = errors.New("object not a pointer")
 	// ErrExhausted is an error for when the data in depolorizer is exhausted
@@ -58,4 +60,8 @@ type IncompatibleValueError struct {
 // Error implements the error interface for IncompatibleValueError
 func (err IncompatibleValueError) Error() string {
 	return fmt.Sprintf("incompatible value error: %v", err.msg)
+}
+
+func UnsupportedTypeError(t reflect.Type) IncompatibleValueError {
+	return IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", t, t.Kind())}
 }
