@@ -361,7 +361,12 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 // polorizeValue accepts a reflect.Value and encodes it into the Polorizer.
 // The underlying value can be any type apart from interfaces, channels and functions.
 func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
-	// Nil
+	// Untyped Nil
+	if value == zeroVal {
+		return IncompatibleValueError{"unsupported type: cannot encode untyped nil"}
+	}
+
+	// Nil Pointer
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
 			return polorizer.PolorizeNull()
@@ -456,14 +461,8 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 		return polorizer.polorizeStructValue(value)
 
-	// Unknown Type
+	// Unsupported Type
 	default:
-		// Untyped Nil
-		if value == zeroVal {
-			return IncompatibleValueError{"unsupported type: cannot encode untyped nil"}
-		}
-
-		// Unsupported Type
 		return UnsupportedTypeError(value.Type())
 	}
 
