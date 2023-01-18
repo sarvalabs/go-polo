@@ -330,7 +330,8 @@ func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 }
 
 // DepolorizePacked decodes another Depolorizer from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WirePack or WireWord.
+// Returns an error if there are no elements left or if the next element is not WirePack or WireDoc.
+// If the next element is a WireNull, returns a ErrNullPack error.
 func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
@@ -338,24 +339,29 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 		return nil, ErrExhausted
 	}
 
-	// Check that wire type is WirePack or WireDoc
-	if !(wire == WirePack || wire == WireDoc) {
+	switch wire {
+	case WirePack, WireDoc:
+		data, err := depolorizer.read()
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert the element into a loadreader
+		load, err := data.load()
+		if err != nil {
+			return nil, err
+		}
+
+		// Create a new Depolorizer in packed mode
+		return &Depolorizer{load: load, packed: true}, nil
+
+	case WireNull:
+		_, _ = depolorizer.read()
+		return nil, ErrNullPack
+
+	default:
 		return nil, IncompatibleWireType(wire, WirePack, WireDoc)
 	}
-
-	data, err := depolorizer.read()
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert the element into a loadreader
-	load, err := data.load()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a new Depolorizer in packed mode
-	return &Depolorizer{load: load, packed: true}, nil
 }
 
 // DepolorizeArray decodes an array or slice from the Depolorizer into the given value.
@@ -502,6 +508,23 @@ func (depolorizer *Depolorizer) DepolorizeStruct(value any) error {
 	return nil
 }
 
+// depolorizeInner decodes another Depolorizer from the Depolorizer.
+// Unlike DepolorizePacked which will expect a compound element and convert it into a packed Depolorizer,
+// depolorizeInner will return the atomic element as an atomic Depolorizer.
+func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
+	if depolorizer.Done() {
+		return nil, ErrExhausted
+	}
+
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a non-pack Depolorizer
+	return &Depolorizer{data: data}, nil
+}
+
 // depolorizeInteger decodes an integer from the Depolorizer.
 // Accepts whether the integer should be signed and its bit-size (8, 16, 32 or 64)
 func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, error) {
@@ -568,7 +591,10 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 	return number, nil
 }
 
+// depolorizeByteArrayValue accepts a reflect.Type and decodes a byte array from the Depolorizer.
+// The target must be an array of bytes and the next value in the Depolorizer must be a WireWord.
 func (depolorizer *Depolorizer) depolorizeByteArrayValue(target reflect.Type) (reflect.Value, error) {
+	// Depolorize a bytes value
 	bytes, err := depolorizer.DepolorizeBytes()
 	if err != nil {
 		return zeroVal, err
@@ -579,7 +605,9 @@ func (depolorizer *Depolorizer) depolorizeByteArrayValue(target reflect.Type) (r
 		return zeroVal, IncompatibleWireError{"mismatched data length for byte array"}
 	}
 
+	// Create a Byte Array Value
 	array := reflect.New(target).Elem()
+	// Copy array contents from the slice into bytes
 	reflect.Copy(array, reflect.ValueOf(bytes))
 
 	return array, nil
@@ -888,9 +916,35 @@ func (depolorizer *Depolorizer) depolorizePointer(target reflect.Type) (reflect.
 	return p, nil
 }
 
+// depolorizeDepolorizable decodes value of type target from the Depolorizer.
+// The target type must implement the Depolorizable interface.
+func (depolorizer *Depolorizer) depolorizeDepolorizable(target reflect.Type) (reflect.Value, error) {
+	// Create a value for the target type
+	value := reflect.New(target)
+
+	// Retrieve the next element as a Depolorizer
+	inner, err := depolorizer.depolorizeInner()
+	if err != nil {
+		return zeroVal, err
+	}
+
+	// Call the Depolorize method of Depolorizable (accepts a Depolorizer and returns an error)
+	outputs := value.MethodByName("Depolorize").Call([]reflect.Value{reflect.ValueOf(inner)})
+	if !outputs[0].IsNil() {
+		return zeroVal, outputs[0].Interface().(error)
+	}
+
+	return value.Elem(), nil
+}
+
 // depolorizeValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
 // The target type can be any type apart from interfaces, channels and functions.
 func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Value, error) {
+	// Depolorizable Type
+	if reflect.PointerTo(target).Implements(reflect.TypeOf((*Depolorizable)(nil)).Elem()) {
+		return depolorizer.depolorizeDepolorizable(target)
+	}
+
 	switch kind := target.Kind(); kind {
 
 	// Pointer Value
@@ -974,7 +1028,7 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 
 	// Unsupported Type
 	default:
-		return zeroVal, IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", target, target.Kind())}
+		return zeroVal, UnsupportedTypeError(target)
 	}
 }
 

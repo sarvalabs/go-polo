@@ -1,5 +1,10 @@
 package polo
 
+// Polorizable is an interface for an object that serialize into a Polorizer
+type Polorizable interface {
+	Polorize() (*Polorizer, error)
+}
+
 // Polorize serializes an object into its POLO byte form.
 // Returns an error if object is an unsupported type such as functions or channels.
 func Polorize(object any) ([]byte, error) {
@@ -13,6 +18,11 @@ func Polorize(object any) ([]byte, error) {
 
 	// Return the bytes of the writebuffer
 	return polorizer.wb.bytes(), nil
+}
+
+// Depolorizable is an interface for an object that deserialize its contents from a Depolorizer
+type Depolorizable interface {
+	Depolorize(*Depolorizer) error
 }
 
 // Depolorize deserializes a POLO encoded byte slice into an object.

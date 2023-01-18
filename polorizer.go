@@ -2,7 +2,6 @@ package polo
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 	"math/big"
 	"reflect"
@@ -54,8 +53,9 @@ func (polorizer *Polorizer) Polorize(value any) error {
 
 // PolorizeNull encodes a null value into the Polorizer.
 // Encodes a WireNull into the head, consuming a position on the wire.
-func (polorizer *Polorizer) PolorizeNull() {
+func (polorizer *Polorizer) PolorizeNull() error {
 	polorizer.wb.write(WireNull, nil)
+	return nil
 }
 
 // PolorizeBytes encodes a bytes value into the Polorizer.
@@ -152,6 +152,11 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.
 // The contents are packed into a WireLoad message and tagged with the WirePack wire type.
 func (polorizer *Polorizer) PolorizePacked(value *Polorizer) {
+	if value == nil {
+		_ = polorizer.PolorizeNull()
+		return
+	}
+
 	polorizer.wb.write(WirePack, value.wb.load())
 }
 
@@ -168,8 +173,7 @@ func (polorizer *Polorizer) PolorizeArray(value any) error {
 	case reflect.Slice:
 		// Nil Slice
 		if v.IsNil() {
-			polorizer.PolorizeNull()
-			return nil
+			return polorizer.PolorizeNull()
 		}
 
 	default:
@@ -192,8 +196,7 @@ func (polorizer *Polorizer) PolorizeMap(value any) error {
 
 	// Nil Map
 	if v.IsNil() {
-		polorizer.PolorizeNull()
-		return nil
+		return polorizer.PolorizeNull()
 	}
 
 	return polorizer.polorizeMapValue(v)
@@ -205,7 +208,7 @@ func (polorizer *Polorizer) PolorizeMap(value any) error {
 func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Nil Document
 	if document == nil {
-		polorizer.PolorizeNull()
+		_ = polorizer.PolorizeNull()
 		return
 	}
 
@@ -243,6 +246,21 @@ func (polorizer *Polorizer) PolorizeStruct(value any) error {
 	}
 
 	return polorizer.polorizeStructValue(v)
+}
+
+// polorizeInner encodes another Polorizer directly into the Polorizer.
+// Unlike PolorizePacked which will always write it as a packed wire while polorizeInner will write an atomic as is
+func (polorizer *Polorizer) polorizeInner(inner *Polorizer) error {
+	// Collapse the inner polorizer into its bytes
+	// This will also resolve whether the polorizer is a packed wire
+	buffer, err := newreadbuffer(inner.Bytes())
+	if err != nil {
+		return err
+	}
+
+	// Write the read buffer contents
+	polorizer.wb.write(buffer.wire, buffer.data)
+	return nil
 }
 
 // polorizeByteArrayValue accepts a reflect.Value and encodes it into the Polorizer.
@@ -326,19 +344,40 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 	return nil
 }
 
+// polorizePolorizable accepts a reflect.Value and encodes it into the Polorizer.
+// The value must implement the Polorizable interface.
+func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
+	// Call the Polorize method of Polorizable (returns a Polorizer and an error)
+	outputs := value.MethodByName("Polorize").Call([]reflect.Value{})
+	if !outputs[1].IsNil() {
+		return outputs[1].Interface().(error)
+	}
+
+	// Polorize the inner polorizer
+	inner := outputs[0].Interface().(*Polorizer)
+	return polorizer.polorizeInner(inner)
+}
+
 // polorizeValue accepts a reflect.Value and encodes it into the Polorizer.
 // The underlying value can be any type apart from interfaces, channels and functions.
 func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
+	// Nil
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return polorizer.PolorizeNull()
+		}
+	}
+
+	// Polorizable Type
+	if value.Type().Implements(reflect.TypeOf((*Polorizable)(nil)).Elem()) {
+		return polorizer.polorizePolorizable(value)
+	}
+
 	// Check the kind of value
 	switch kind := value.Kind(); kind {
 
 	// Pointer
 	case reflect.Ptr:
-		if value.IsNil() {
-			polorizer.PolorizeNull()
-			return nil
-		}
-
 		return polorizer.polorizeValue(value.Elem())
 
 	// Boolean
@@ -369,8 +408,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Slice:
 		// Nil Slice
 		if value.IsNil() {
-			polorizer.PolorizeNull()
-			return nil
+			return polorizer.PolorizeNull()
 		}
 
 		// Byte Slice
@@ -395,8 +433,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Map:
 		// Nil Map
 		if value.IsNil() {
-			polorizer.PolorizeNull()
-			return nil
+			return polorizer.PolorizeNull()
 		}
 
 		// Check if value is a polo.Document and encode as such
@@ -419,13 +456,15 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 		return polorizer.polorizeStructValue(value)
 
-	// Unsupported Type
+	// Unknown Type
 	default:
+		// Untyped Nil
 		if value == zeroVal {
 			return IncompatibleValueError{"unsupported type: cannot encode untyped nil"}
 		}
 
-		return IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", value.Type(), value.Type().Kind())}
+		// Unsupported Type
+		return UnsupportedTypeError(value.Type())
 	}
 
 	return nil
