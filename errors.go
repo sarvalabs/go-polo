@@ -16,8 +16,8 @@ var (
 	ErrNullPack = errors.New("null pack element")
 	// ErrObjectNotPtr is an error for when a non pointer object is passed to the Depolorize function
 	ErrObjectNotPtr = errors.New("object not a pointer")
-	// ErrExhausted is an error for when the data in depolorizer is exhausted
-	ErrExhausted = errors.New("data exhausted")
+	// ErrInsufficientWire is an error for when the data in depolorizer is exhausted
+	ErrInsufficientWire = errors.New("insufficient data in wire for decode")
 )
 
 // MalformedTagError is an error for when a consumed varint for a tag is malformed

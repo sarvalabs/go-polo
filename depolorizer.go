@@ -28,7 +28,7 @@ func NewDepolorizer(data []byte) (*Depolorizer, error) {
 	// Create a new readbuffer from the wire
 	rb, err := newreadbuffer(data)
 	if err != nil {
-		return nil, err
+		return nil, IncompatibleWireError{err.Error()}
 	}
 
 	// Create a non-pack Depolorizer
@@ -94,7 +94,7 @@ func (depolorizer *Depolorizer) DepolorizeNull() error {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return ErrExhausted
+		return ErrInsufficientWire
 	}
 
 	// Error if not WireNull
@@ -114,7 +114,7 @@ func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -144,7 +144,7 @@ func (depolorizer *Depolorizer) DepolorizeString() (string, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return "", ErrExhausted
+		return "", ErrInsufficientWire
 	}
 
 	switch wire {
@@ -175,7 +175,7 @@ func (depolorizer *Depolorizer) DepolorizeBool() (bool, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return false, ErrExhausted
+		return false, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -231,7 +231,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat32() (float32, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return 0, ErrExhausted
+		return 0, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -270,7 +270,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return 0, ErrExhausted
+		return 0, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -307,7 +307,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -336,7 +336,7 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -364,71 +364,6 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 	}
 }
 
-// DepolorizeArray decodes an array or slice from the Depolorizer into the given value.
-// Returns an error if there are no elements left, if the next element is not WirePack or if
-// the value is not an array/slice. Returns nil/zero value if the next element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeArray(value any) (err error) {
-	// Reflect on given value and error if not pointer
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Pointer {
-		return ErrObjectNotPtr
-	}
-
-	// Declare a result value
-	var result reflect.Value
-	// Obtain the type of the underlying type and check that it is an array/slice
-	target := v.Type().Elem()
-
-	switch target.Kind() {
-	case reflect.Array:
-		result, err = depolorizer.depolorizeArrayValue(target)
-	case reflect.Slice:
-		result, err = depolorizer.depolorizeSliceValue(target)
-	default:
-		return IncompatibleValueError{"value is not an array or slice"}
-	}
-
-	// Check for decode errors
-	if err != nil {
-		return err
-	} else if result == zeroVal {
-		return nil
-	}
-
-	// Convert and set the decoded value
-	v.Elem().Set(result.Convert(target))
-	return nil
-}
-
-// DepolorizeMap decodes a map from the Depolorizer into the given value.
-// Returns an error if there are no elements left, if the next element is not WirePack
-// or if the value is not a map. Returns nil value if the next element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeMap(value any) error {
-	// Reflect on given value and error if not pointer
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Pointer {
-		return ErrObjectNotPtr
-	}
-
-	// Obtain the type of the underlying type and check that it is a map
-	target := v.Type().Elem()
-	if target.Kind() != reflect.Map {
-		return IncompatibleValueError{"value is not a map"}
-	}
-
-	// Decode to target and check for decode errors
-	result, err := depolorizer.depolorizeMapValue(target)
-	if err != nil {
-		return err
-	} else if result == zeroVal {
-		return nil
-	}
-
-	// Convert and set the decoded value
-	v.Elem().Set(result.Convert(target))
-	return nil
-}
-
 // DepolorizeDocument decodes a Document from the Depolorizer.
 // Returns an error if there are no elements left, if the next element is not WireDoc.
 // Returns nil value if the next element is a WireNull.
@@ -436,7 +371,7 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	// Peek the wire type of the next element
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -513,7 +448,7 @@ func (depolorizer *Depolorizer) DepolorizeStruct(value any) error {
 // depolorizeInner will return the atomic element as an atomic Depolorizer.
 func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
 	if depolorizer.Done() {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	data, err := depolorizer.read()
@@ -531,7 +466,7 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 	// Peek the next wire type
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return nil, ErrExhausted
+		return nil, ErrInsufficientWire
 	}
 
 	// Check that wire is either WirePosInt, WireNegInt or WireNull
@@ -619,7 +554,7 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 	// Peek the wire type of the next element
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return zeroVal, ErrExhausted
+		return zeroVal, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -674,7 +609,7 @@ func (depolorizer *Depolorizer) depolorizeArrayValue(target reflect.Type) (refle
 	// Peek the wire type of the next element
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return zeroVal, ErrExhausted
+		return zeroVal, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -732,7 +667,7 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 	// Peek the wire type of the next element
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return zeroVal, ErrExhausted
+		return zeroVal, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -795,7 +730,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 	// Peek the wire type of the next element
 	wire, ok := depolorizer.Peek()
 	if !ok {
-		return zeroVal, ErrExhausted
+		return zeroVal, ErrInsufficientWire
 	}
 
 	switch wire {
@@ -1038,7 +973,7 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 func (depolorizer *Depolorizer) read() (readbuffer, error) {
 	// Check if there is another element to read
 	if depolorizer.Done() {
-		return readbuffer{}, ErrExhausted
+		return readbuffer{}, ErrInsufficientWire
 	}
 
 	// Read from the loadreader if in packed mode

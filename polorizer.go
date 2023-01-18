@@ -160,48 +160,6 @@ func (polorizer *Polorizer) PolorizePacked(value *Polorizer) {
 	polorizer.wb.write(WirePack, value.wb.load())
 }
 
-// PolorizeArray encodes an array or slice into the Polorizer.
-// Encodes the array/slice elements as POLO pack-encoded data with the wire type being WirePack.
-// Returns an error if value is not an array/slice or if the array elements cannot be encoded.
-// If the value is a nil slice, it is encoded as WireNull.
-func (polorizer *Polorizer) PolorizeArray(value any) error {
-	// Reflect on the given value
-	v := reflect.ValueOf(value)
-	// Check value kind
-	switch v.Kind() {
-	case reflect.Array:
-	case reflect.Slice:
-		// Nil Slice
-		if v.IsNil() {
-			return polorizer.PolorizeNull()
-		}
-
-	default:
-		// Not an array or slice
-		return IncompatibleValueError{"value is not an array or slice"}
-	}
-
-	return polorizer.polorizeArrayValue(v)
-}
-
-// PolorizeMap encodes a map into the Polorizer.
-// Encodes the map keys and values as POLO pack-encoded data with the wire type being WirePack.
-// Returns an error if the value is not a map or if the map keys or values cannot be encoded.
-// If the value is a nil map, it is encoded as a WireNull.
-func (polorizer *Polorizer) PolorizeMap(value any) error {
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Map {
-		return IncompatibleValueError{"value is not a map"}
-	}
-
-	// Nil Map
-	if v.IsNil() {
-		return polorizer.PolorizeNull()
-	}
-
-	return polorizer.polorizeMapValue(v)
-}
-
 // PolorizeDocument encodes a Document into the Polorizer.
 // Encodes the Document keys and raw values as POLO doc-encoded data with the wire type being WireDoc.
 // If the Document is nil, it is encoded as a WireNull.
