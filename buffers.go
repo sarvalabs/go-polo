@@ -68,15 +68,6 @@ func newreadbuffer(b []byte) (readbuffer, error) {
 	return readbuffer{WireType(tag & 15), b[consumed:]}, nil
 }
 
-// bytes returns the full readbuffer as slice of bytes.
-// It prepends its wiretype to rest of the data.
-func (rb readbuffer) bytes() []byte {
-	rbytes := make([]byte, len(rb.data))
-	copy(rbytes, rb.data)
-
-	return prepend(byte(rb.wire), rbytes)
-}
-
 // load returns a loadreader from a readbuffer.
 // Throws an error if the wiretype of the readbuffer is not compound (pack)
 func (rb *readbuffer) load() (*loadreader, error) {
@@ -166,7 +157,7 @@ func (lr *loadreader) next() (readbuffer, error) {
 	if lr.head.Len() == 0 {
 		// Check if load reader is done
 		if lr.done() {
-			return readbuffer{}, errors.New("loadreader exhausted")
+			return readbuffer{}, ErrInsufficientWire
 		}
 
 		// Update current values from the next values
@@ -210,14 +201,4 @@ func read(r io.Reader, n int) ([]byte, error) {
 	}
 
 	return d, nil
-}
-
-// prepend is a generic function that accepts an object of some any type and a slice of objects of
-// the same type and inserts the object to the front of the slice and shifts the other elements.
-func prepend[Element any](y Element, x []Element) []Element {
-	x = append(x, *new(Element))
-	copy(x[1:], x)
-	x[0] = y
-
-	return x
 }
