@@ -151,13 +151,16 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.
 // The contents are packed into a WireLoad message and tagged with the WirePack wire type.
-func (polorizer *Polorizer) PolorizePacked(value *Polorizer) {
-	if value == nil {
+// If the given Polorizer is nil, a WireNull is encoded instead.
+func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
+	// If pack is nil, encode WireNull
+	if pack == nil {
 		_ = polorizer.PolorizeNull()
 		return
 	}
 
-	polorizer.wb.write(WirePack, value.wb.load())
+	// Encode pack load contents as a WirePack
+	polorizer.wb.write(WirePack, pack.wb.load())
 }
 
 // PolorizeDocument encodes a Document into the Polorizer.
@@ -194,31 +197,22 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	polorizer.wb.write(WireDoc, documentWire.wb.load())
 }
 
-// PolorizeStruct encodes a struct into the Polorizer.
-// Encodes the struct fields as POLO pack-encoded data with the wire type being WirePack.
-// Returns an error if value is not a struct or if its fields cannot be encoded.
-func (polorizer *Polorizer) PolorizeStruct(value any) error {
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Struct {
-		return IncompatibleValueError{"value is not a struct"}
+// polorizeInner encodes another Polorizer directly into the Polorizer.
+// Unlike PolorizePacked which will always write it as a packed wire while polorizeInner will write an atomic as is.
+// If the given Polorizer is nil, a WireNull is encoded.
+func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
+	// If inner is nil, encode a WireNull
+	if inner == nil {
+		_ = polorizer.PolorizeNull()
+		return
 	}
 
-	return polorizer.polorizeStructValue(v)
-}
-
-// polorizeInner encodes another Polorizer directly into the Polorizer.
-// Unlike PolorizePacked which will always write it as a packed wire while polorizeInner will write an atomic as is
-func (polorizer *Polorizer) polorizeInner(inner *Polorizer) error {
 	// Collapse the inner polorizer into its bytes
 	// This will also resolve whether the polorizer is a packed wire
-	buffer, err := newreadbuffer(inner.Bytes())
-	if err != nil {
-		return err
-	}
+	buffer, _ := newreadbuffer(inner.Bytes())
 
 	// Write the read buffer contents
 	polorizer.wb.write(buffer.wire, buffer.data)
-	return nil
 }
 
 // polorizeByteArrayValue accepts a reflect.Value and encodes it into the Polorizer.
@@ -313,7 +307,9 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 
 	// Polorize the inner polorizer
 	inner := outputs[0].Interface().(*Polorizer)
-	return polorizer.polorizeInner(inner)
+	polorizer.polorizeInner(inner)
+
+	return nil
 }
 
 // polorizeValue accepts a reflect.Value and encodes it into the Polorizer.

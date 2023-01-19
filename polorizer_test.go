@@ -118,42 +118,6 @@ func TestPolorizer_PolorizeFloat64(t *testing.T) {
 	assert.Equal(t, []byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143}, polorizer.Packed())
 }
 
-func TestPolorizer_PolorizeArray(t *testing.T) {
-	polorizer := NewPolorizer()
-
-	err := polorizer.PolorizeArray([2]string{"foo", "bar"})
-	assert.Nil(t, err)
-	assert.Equal(t, []byte{14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 31, 14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Packed())
-
-	var a []uint64
-	err = polorizer.PolorizeArray(a)
-	assert.Nil(t, err)
-	assert.Equal(t, []byte{14, 63, 14, 144, 1, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 63, 14, 144, 1, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Packed())
-
-	err = polorizer.PolorizeArray(10)
-	assert.EqualError(t, err, "incompatible value error: value is not an array or slice")
-}
-
-func TestPolorizer_PolorizeMap(t *testing.T) {
-	polorizer := NewPolorizer()
-
-	err := polorizer.PolorizeMap(map[string]string{"foo": "bar"})
-	assert.Nil(t, err)
-	assert.Equal(t, []byte{14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 31, 14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Packed())
-
-	var a map[uint64]uint64
-	err = polorizer.PolorizeMap(a)
-	assert.Nil(t, err)
-	assert.Equal(t, []byte{14, 63, 14, 144, 1, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 63, 14, 144, 1, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Packed())
-
-	err = polorizer.PolorizeMap(10)
-	assert.EqualError(t, err, "incompatible value error: value is not a map")
-}
-
 func TestPolorizer_PolorizeDocument(t *testing.T) {
 	document := make(Document)
 	_ = document.SetObject("far", 123)
@@ -161,7 +125,6 @@ func TestPolorizer_PolorizeDocument(t *testing.T) {
 
 	polorizer := NewPolorizer()
 	polorizer.PolorizeDocument(document)
-
 	assert.Equal(t, []byte{13, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Bytes())
 	assert.Equal(t, []byte{14, 31, 13, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
 
@@ -170,16 +133,39 @@ func TestPolorizer_PolorizeDocument(t *testing.T) {
 	assert.Equal(t, []byte{14, 63, 13, 160, 2, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
 }
 
-func TestPolorizer_PolorizeStruct(t *testing.T) {
+func TestPolorizer_PolorizePacked(t *testing.T) {
 	polorizer := NewPolorizer()
+	polorizer.PolorizePacked(nil)
+	assert.Equal(t, []byte{0}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 0}, polorizer.Packed())
 
-	err := polorizer.PolorizeStruct(struct{ A, B string }{"foo", "bar"})
-	assert.Nil(t, err)
-	assert.Equal(t, []byte{14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 31, 14, 47, 6, 54, 102, 111, 111, 98, 97, 114}, polorizer.Packed())
+	another := NewPolorizer()
+	another.PolorizePacked(polorizer)
+	assert.Equal(t, []byte{14, 31, 0}, another.Bytes())
+	assert.Equal(t, []byte{14, 31, 14, 31, 0}, another.Packed())
+}
 
-	err = polorizer.PolorizeStruct(10)
-	assert.EqualError(t, err, "incompatible value error: value is not a struct")
+func TestPolorizer_polorizerInner(t *testing.T) {
+	polorizer := NewPolorizer()
+	polorizer.polorizeInner(nil)
+	assert.Equal(t, []byte{0}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 0}, polorizer.Packed())
+
+	assert.Nil(t, polorizer.Polorize(5))
+	assert.Equal(t, []byte{14, 47, 0, 3, 5}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 47, 0, 3, 5}, polorizer.Packed())
+
+	another := NewPolorizer()
+	another.PolorizeInt(300)
+
+	polorizer.polorizeInner(another)
+	assert.Equal(t, []byte{14, 63, 0, 3, 19, 5, 1, 44}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 0, 3, 19, 5, 1, 44}, polorizer.Packed())
+
+	another.PolorizeInt(250)
+	polorizer.polorizeInner(another)
+	assert.Equal(t, []byte{14, 79, 0, 3, 19, 62, 5, 1, 44, 47, 3, 35, 1, 44, 250}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 79, 0, 3, 19, 62, 5, 1, 44, 47, 3, 35, 1, 44, 250}, polorizer.Packed())
 }
 
 func TestSorter_Panics(t *testing.T) {

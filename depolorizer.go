@@ -2,7 +2,6 @@ package polo
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -360,7 +359,7 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 		return nil, ErrNullPack
 
 	default:
-		return nil, IncompatibleWireType(wire, WirePack, WireDoc)
+		return nil, IncompatibleWireType(wire, WireNull, WirePack, WireDoc)
 	}
 }
 
@@ -399,7 +398,7 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 				return nil, err
 			}
 
-			// Set the value data into the document for the decoded key
+			// Set the value bytes into the document for the decoded key
 			doc.Set(docKey, val.data)
 		}
 
@@ -412,35 +411,6 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	default:
 		return nil, IncompatibleWireType(wire, WireNull, WireDoc)
 	}
-}
-
-// DepolorizeStruct decodes a struct from the Depolorizer into the given value.
-// Returns an error if there are no elements left, if the next element is not WirePack/WireDoc
-// or if the value is not a struct. Returns nil value if the next element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeStruct(value any) error {
-	// Reflect on given value and error if not pointer
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Pointer {
-		return ErrObjectNotPtr
-	}
-
-	// Obtain the type of the underlying type and check that it is struct
-	target := v.Type().Elem()
-	if target.Kind() != reflect.Struct {
-		return IncompatibleValueError{"value is not a struct"}
-	}
-
-	// Decode to target and check for decode errors
-	result, err := depolorizer.depolorizeStructValue(target)
-	if err != nil {
-		return err
-	} else if result == zeroVal {
-		return nil
-	}
-
-	// Convert and set the decoded value
-	v.Elem().Set(result.Convert(target))
-	return nil
 }
 
 // depolorizeInner decodes another Depolorizer from the Depolorizer.
@@ -487,7 +457,7 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 
 	// Check that bit-size value is valid
 	if !isBitSize(size) {
-		return 0, errors.New("internal: invalid bit-size for integer decode")
+		panic("invalid bit-size for integer decode")
 	}
 
 	// Check that the data does not overflow for bit-size
@@ -581,6 +551,8 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 			// Create a value based on the nullity of val
 			var sliceVal reflect.Value
 			if val == zeroVal {
+				fmt.Println("here")
+
 				// Create a nil value
 				sliceVal = reflect.New(sliceElem).Elem()
 			} else {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sort"
 	"testing"
 
 	fuzz "github.com/google/gofuzz"
@@ -634,6 +635,10 @@ func TestUnsupported(t *testing.T) {
 	// Map with Unsupported Type for Values
 	_, err = Polorize(map[string]chan int{"foo": make(chan int)})
 	require.EqualError(t, err, "incompatible value error: unsupported type: chan int [chan]")
+
+	// Decode
+	err = Depolorize(new(chan string), []byte{0})
+	require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
 }
 
 type SkipObject struct {
@@ -936,6 +941,11 @@ func TestIncompatibleWireType(t *testing.T) {
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, pack}"},
 		},
 		{
+			[]byte{4, 45, 22},
+			new([]byte),
+			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, word}"},
+		},
+		{
 			[]byte{5, 45, 22},
 			new([4]string),
 			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
@@ -970,6 +980,16 @@ func TestIncompatibleWireType(t *testing.T) {
 			&IntegerObject{},
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
+		{
+			[]byte{13, 95, 7, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			new(Document),
+			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
+		},
+		{
+			[]byte{14, 31, 4, 132},
+			new([]uint64),
+			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, posint}"},
+		},
 	}
 
 	for tno, test := range tests {
@@ -997,7 +1017,12 @@ func TestMalformed(t *testing.T) {
 		{
 			[]byte{255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 93, 3, 3, 3, 3, 3},
 			&IntegerObject{},
-			MalformedTagError{errVarintOverflow.Error()},
+			IncompatibleWireError{MalformedTagError{errVarintOverflow.Error()}.Error()},
+		},
+		{
+			[]byte{14, 47, 6, 134},
+			new([][2]byte),
+			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			[]byte{6, 255, 255, 255},
@@ -1017,7 +1042,83 @@ func TestMalformed(t *testing.T) {
 		{
 			[]byte{14, 79, 3, 3, 3, 3, 0, 0, 0, 0},
 			&IntegerObject{},
-			IncompatibleWireError{fmt.Sprintf("struct field [polo.IntegerObject.E <int64>]: %v", ErrExhausted)},
+			IncompatibleWireError{fmt.Sprintf("struct field [polo.IntegerObject.E <int64>]: %v", ErrInsufficientWire)},
+		},
+		{
+			[]byte{13, 175},
+			new(Document),
+			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
+		},
+		{
+			[]byte{14, 175},
+			new([]string),
+			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
+		},
+		{
+			[]byte{14, 175},
+			new([2]float32),
+			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
+		},
+		{
+			[]byte{14, 175},
+			new(map[uint64]string),
+			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
+		},
+		{
+			[]byte{13, 63, 6, 54, 86, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			new(Document),
+			errors.New("insufficient data in wire for decode"),
+		},
+
+		{
+			[]byte{14, 47, 6, 230, 102, 111, 111},
+			new([]string),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 6, 230, 1, 1, 1},
+			new([][]byte),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 6, 230, 1, 1, 1},
+			new([2][]byte),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 79, 6, 54, 102, 230, 1, 1, 1, 1, 1, 1},
+			new(map[string]string),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 63, 6, 54, 230, 1, 1, 1, 1, 1, 1},
+			new(map[string]string),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 7, 231, 102, 111, 111},
+			new([]float32),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 7, 231, 102, 111, 111, 231, 102, 111, 111},
+			new([]float64),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 5, 165, 1, 44, 250},
+			new([]big.Int),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 3, 131},
+			new([]uint64),
+			MalformedTagError{"varint terminated prematurely"},
+		},
+		{
+			[]byte{14, 47, 6, 203},
+			new(CustomEncodeObject),
+			MalformedTagError{"varint terminated prematurely"},
 		},
 	}
 
@@ -1025,4 +1126,153 @@ func TestMalformed(t *testing.T) {
 		err := Depolorize(test.object, test.wire)
 		assert.EqualError(t, err, test.err.Error(), "[%v] Input: %v", tno, test.wire)
 	}
+}
+
+type CustomEncodeObject struct {
+	A string
+	B int32
+	C []string
+	D map[string]string
+	E float64
+}
+
+func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
+	polorizer := NewPolorizer()
+
+	polorizer.PolorizeString(object.A)
+	polorizer.PolorizeInt(int64(object.B))
+
+	if object.C == nil {
+		_ = polorizer.PolorizeNull()
+	} else {
+		C := NewPolorizer()
+		for _, elem := range object.C {
+			C.PolorizeString(elem)
+		}
+
+		polorizer.PolorizePacked(C)
+	}
+
+	if object.D == nil {
+		_ = polorizer.PolorizeNull()
+	} else {
+		keys := make([]string, 0, len(object.D))
+		for key := range object.D {
+			keys = append(keys, key)
+		}
+
+		sort.Strings(keys)
+		D := NewPolorizer()
+		for _, key := range keys {
+			D.PolorizeString(key)
+			D.PolorizeString(object.D[key])
+		}
+
+		polorizer.PolorizePacked(D)
+	}
+
+	polorizer.PolorizeFloat64(object.E)
+
+	return polorizer, nil
+}
+
+func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err error) {
+	depolorizer, err = depolorizer.DepolorizePacked()
+	if errors.Is(err, ErrNullPack) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	object.A, err = depolorizer.DepolorizeString()
+	if err != nil {
+		return err
+	}
+
+	B, err := depolorizer.DepolorizeInt()
+	if err != nil {
+		return err
+	}
+
+	object.B = int32(B)
+
+	c, err := depolorizer.DepolorizePacked()
+	if errors.Is(err, ErrNullPack) {
+		object.C = nil
+	} else if err != nil {
+		return err
+	} else {
+		object.C = make([]string, 0, 5)
+
+		for !c.Done() {
+			element, err := c.DepolorizeString()
+			if err != nil {
+				return err
+			}
+
+			object.C = append(object.C, element)
+		}
+	}
+
+	d, err := depolorizer.DepolorizePacked()
+	if errors.Is(err, ErrNullPack) {
+		object.D = nil
+	} else if err != nil {
+		return err
+	} else {
+		object.D = make(map[string]string)
+
+		for !d.Done() {
+			key, err := d.DepolorizeString()
+			if err != nil {
+				return err
+			}
+
+			val, err := d.DepolorizeString()
+			if err != nil {
+				return err
+			}
+
+			object.D[key] = val
+		}
+	}
+
+	if object.E, err = depolorizer.DepolorizeFloat64(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestCustomEncoding(t *testing.T) {
+	t.Run("CustomEncodeObject", func(t *testing.T) {
+		f := fuzz.New()
+		var x CustomEncodeObject
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
+	t.Run("BadCustomObject", func(t *testing.T) {
+		object := BadCustomObject{make(chan string)}
+		bytes, err := Polorize(object)
+
+		assert.Nil(t, bytes)
+		assert.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	})
+}
+
+type BadCustomObject struct {
+	A chan string
+}
+
+func (object BadCustomObject) Polorize() (*Polorizer, error) {
+	polorizer := NewPolorizer()
+	if err := polorizer.Polorize(object.A); err != nil {
+		return nil, err
+	}
+
+	return polorizer, nil
 }

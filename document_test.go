@@ -333,3 +333,53 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 		}
 	}
 }
+
+func TestDocument_DecodeToStruct(t *testing.T) {
+	type Object struct {
+		A int `polo:"boo"`
+		B int `polo:"foo"`
+		C int `polo:"-"`
+	}
+
+	tests := []struct {
+		bytes  []byte
+		target any
+		object any
+		err    string
+	}{
+		{
+			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
+			new(Object), &Object{A: 300}, "",
+		},
+		{
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), &Object{A: 54, B: 89}, "",
+		},
+		{
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), &Object{A: 54, B: 89}, "",
+		},
+		{
+			[]byte{13, 95, 7, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), new(Object),
+			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
+		},
+		{
+			[]byte{13, 47, 6, 54, 98, 111, 111, 142},
+			new(Object), new(Object),
+			"incompatible wire: malformed tag: varint terminated prematurely",
+		},
+	}
+
+	for _, test := range tests {
+		err := Depolorize(test.target, test.bytes)
+		assert.Equal(t, test.object, test.target)
+
+		if test.err == "" {
+			assert.Nil(t, err)
+		} else {
+			assert.EqualError(t, err, test.err)
+		}
+	}
+
+}
