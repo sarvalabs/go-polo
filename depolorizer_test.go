@@ -41,9 +41,6 @@ func TestNewDepolorizer(t *testing.T) {
 		}
 
 		assert.Nil(t, err)
-
-		peek, _ := depolorizer.Peek()
-		assert.Equal(t, test.peek, peek)
 	}
 }
 
@@ -60,10 +57,6 @@ func TestDepolorizer_DepolorizeNull(t *testing.T) {
 
 	err = depolorizer.DepolorizeNull()
 	assert.EqualError(t, err, "incompatible wire: unexpected wiretype 'true'. expected one of: {null}")
-	assert.False(t, depolorizer.Done())
-
-	_, err = depolorizer.DepolorizeBool()
-	assert.Nil(t, err)
 	assert.False(t, depolorizer.Done())
 
 	err = depolorizer.DepolorizeNull()

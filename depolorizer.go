@@ -34,6 +34,19 @@ func NewDepolorizer(data []byte) (*Depolorizer, error) {
 	return &Depolorizer{data: rb}, nil
 }
 
+// newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
+// The readbuffer is converted into a loadreader and the returned Depolorizer is created in packed mode.
+func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
+	// Convert the element into a loadreader
+	load, err := data.load()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a new Depolorizer in packed mode
+	return &Depolorizer{load: load, packed: true}, nil
+}
+
 // Done returns whether all elements in the Depolorizer have been read.
 func (depolorizer *Depolorizer) Done() bool {
 	// Check if loadreader is done if in packed mode
@@ -43,23 +56,6 @@ func (depolorizer *Depolorizer) Done() bool {
 
 	// Return flag for non-pack data
 	return depolorizer.done
-}
-
-// Peek returns the WireType of the next element in the Depolorizer.
-// Returns a boolean along with it, which is false if the Depolorizer has no elements left.
-func (depolorizer *Depolorizer) Peek() (WireType, bool) {
-	// Check if depolorizer contents are done
-	if depolorizer.Done() {
-		return WireNull, false
-	}
-
-	// Peek the next wire from the loadreader if in packed mode
-	if depolorizer.packed {
-		return depolorizer.load.peek()
-	}
-
-	// Return wire of non-pack data
-	return depolorizer.data.wire, true
 }
 
 // Depolorize decodes a value from the Depolorizer.
@@ -87,117 +83,97 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 	return nil
 }
 
-// DepolorizeNull decodes a null value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireNull.
+// DepolorizeNull attempts to decode a null value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireNull.
 func (depolorizer *Depolorizer) DepolorizeNull() error {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return err
 	}
 
 	// Error if not WireNull
-	if wire != WireNull {
-		return IncompatibleWireType(wire, WireNull)
+	if data.wire != WireNull {
+		return IncompatibleWireType(data.wire, WireNull)
 	}
 
-	// Read the element to consume it
-	_, _ = depolorizer.read()
 	return nil
 }
 
-// DepolorizeBytes decodes a bytes value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireWord.
-// Returns a nil byte slice if the next element is a WireNull.
+// DepolorizeBytes attempts to decode a bytes value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireWord.
+// Returns a nil byte slice if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return nil, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WireWord:
-		data, err := depolorizer.read()
-		if err != nil {
-			return nil, err
-		}
-
 		return data.data, nil
 
 	// Nil Byte Slice (Default)
 	case WireNull:
-		// Read the element to consume it
-		_, _ = depolorizer.read()
 		return nil, nil
 
 	default:
-		return nil, IncompatibleWireType(wire, WireNull, WireWord)
+		return nil, IncompatibleWireType(data.wire, WireNull, WireWord)
 	}
 }
 
-// DepolorizeString decodes a string value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireWord.
-// Returns an empty string if the next element is a WireNull.
+// DepolorizeString attempts to decode a string value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireWord.
+// Returns an empty string if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeString() (string, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return "", ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return "", err
 	}
 
-	switch wire {
+	switch data.wire {
 	// Convert []byte to string
 	case WireWord:
-		data, err := depolorizer.read()
-		if err != nil {
-			return "", err
-		}
-
 		return string(data.data), nil
 
 	// Empty String (Default)
 	case WireNull:
-		// Read the element to consume it
-		_, _ = depolorizer.read()
 		return "", nil
 
 	default:
-		return "", IncompatibleWireType(wire, WireNull, WireWord)
+		return "", IncompatibleWireType(data.wire, WireNull, WireWord)
 	}
 }
 
-// DepolorizeBool decodes a bool value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireTrue or WireFalse.
-// Returns a false if the next element is a WireNull.
+// DepolorizeBool attempts to decode a bool value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireTrue or WireFalse.
+// Returns a false if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeBool() (bool, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return false, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return false, err
 	}
 
-	switch wire {
+	switch data.wire {
 	// True Value
 	case WireTrue:
-		// Read the element to consume it
-		_, _ = depolorizer.read()
 		return true, nil
 
 	// False Value (Default)
 	case WireFalse, WireNull:
-		// Read the element to consume it
-		_, _ = depolorizer.read()
 		return false, nil
 
 	default:
-		return false, IncompatibleWireType(wire, WireNull, WireTrue, WireFalse)
+		return false, IncompatibleWireType(data.wire, WireNull, WireTrue, WireFalse)
 	}
 }
 
-// DepolorizeUint decodes an unsigned integer value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WirePosInt.
-// Returns 0 if the next element is a WireNull.
+// DepolorizeUint attempts to decode an unsigned integer value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt.
+// Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeUint() (uint64, error) {
 	// Depolorize an unsigned 64-bit integer
 	number, err := depolorizer.depolorizeInteger(false, 64)
@@ -209,9 +185,9 @@ func (depolorizer *Depolorizer) DepolorizeUint() (uint64, error) {
 	return number.(uint64), nil
 }
 
-// DepolorizeInt decodes a signed integer value from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WirePosInt or WireNegInt.
-// Returns 0 if the next element is a WireNull.
+// DepolorizeInt attempts to decode a signed integer value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
+// Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeInt() (int64, error) {
 	// Depolorize a signed 64-bit integer
 	number, err := depolorizer.depolorizeInteger(true, 64)
@@ -223,24 +199,18 @@ func (depolorizer *Depolorizer) DepolorizeInt() (int64, error) {
 	return number.(int64), nil
 }
 
-// DepolorizeFloat32 decodes a single point precision float from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireFloat.
-// Returns 0 if the next element is a WireNull.
+// DepolorizeFloat32 attempts to decode a single point precision float from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireFloat.
+// Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeFloat32() (float32, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return 0, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WireFloat:
-		data, err := depolorizer.read()
-		if err != nil {
-			return 0, err
-		}
-
-		//
 		if len(data.data) != 4 {
 			return 0, IncompatibleWireError{"malformed data for 32-bit float"}
 		}
@@ -255,30 +225,25 @@ func (depolorizer *Depolorizer) DepolorizeFloat32() (float32, error) {
 
 	// 0 (Default)
 	case WireNull:
-		_, _ = depolorizer.read()
 		return 0, nil
+
 	default:
-		return 0, IncompatibleWireType(wire, WireNull, WireFloat)
+		return 0, IncompatibleWireType(data.wire, WireNull, WireFloat)
 	}
 }
 
-// DepolorizeFloat64 decodes a double point precision float from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireFloat.
-// Returns 0 if the next element is a WireNull.
+// DepolorizeFloat64 attempts to decode a double point precision float from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireFloat.
+// Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return 0, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WireFloat:
-		data, err := depolorizer.read()
-		if err != nil {
-			return 0, err
-		}
-
 		if len(data.data) != 8 {
 			return 0, IncompatibleWireError{"malformed data for 64-bit float"}
 		}
@@ -293,134 +258,76 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 
 	// 0 (Default)
 	case WireNull:
-		_, _ = depolorizer.read()
 		return 0, nil
+
 	default:
-		return 0, IncompatibleWireType(wire, WireNull, WireFloat)
+		return 0, IncompatibleWireType(data.wire, WireNull, WireFloat)
 	}
 }
 
-// DepolorizeBigInt decodes a big.Int from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WireBigInt.
-// Returns nil if the next element is a WireNull.
+// DepolorizeBigInt attempts to decode a big.Int from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireBigInt.
+// Returns a nil big.Int if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return nil, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WireBigInt:
-		data, err := depolorizer.read()
-		if err != nil {
-			return nil, err
-		}
-
 		return new(big.Int).SetBytes(data.data), nil
 
-		// 0 (Default)
+	// Nil big.Int
 	case WireNull:
-		_, _ = depolorizer.read()
 		return nil, nil
 
 	default:
-		return nil, IncompatibleWireType(wire, WireNull, WireBigInt)
+		return nil, IncompatibleWireType(data.wire, WireNull, WireBigInt)
 	}
 }
 
-// DepolorizePacked decodes another Depolorizer from the Depolorizer.
-// Returns an error if there are no elements left or if the next element is not WirePack or WireDoc.
-// If the next element is a WireNull, returns a ErrNullPack error.
-func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return nil, ErrInsufficientWire
+// DepolorizeDocument attempts to decode a Document from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left, if the element is not WireDoc.
+// Returns nil Document if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
 	}
 
-	switch wire {
+	return documentDecode(data)
+}
+
+// DepolorizePacked attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePack or WireDoc.
+// Returns a ErrNullPack if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
+	}
+
+	switch data.wire {
 	case WirePack, WireDoc:
-		data, err := depolorizer.read()
-		if err != nil {
-			return nil, err
-		}
-
-		// Convert the element into a loadreader
-		load, err := data.load()
-		if err != nil {
-			return nil, err
-		}
-
-		// Create a new Depolorizer in packed mode
-		return &Depolorizer{load: load, packed: true}, nil
+		return newLoadDepolorizer(data)
 
 	case WireNull:
-		_, _ = depolorizer.read()
 		return nil, ErrNullPack
 
 	default:
-		return nil, IncompatibleWireType(wire, WireNull, WirePack, WireDoc)
+		return nil, IncompatibleWireType(data.wire, WireNull, WirePack, WireDoc)
 	}
 }
 
-// DepolorizeDocument decodes a Document from the Depolorizer.
-// Returns an error if there are no elements left, if the next element is not WireDoc.
-// Returns nil value if the next element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
-	// Peek the wire type of the next element
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return nil, ErrInsufficientWire
-	}
-
-	switch wire {
-	case WireDoc:
-		// Get the next element as a pack
-		// depolorizer with the slice elements
-		pack, err := depolorizer.DepolorizePacked()
-		if err != nil {
-			return nil, err
-		}
-
-		doc := make(Document)
-
-		// Iterate on the pack until done
-		for !pack.Done() {
-			// Depolorize the next object from the pack into the Document key (string)
-			docKey, err := pack.DepolorizeString()
-			if err != nil {
-				return nil, err
-			}
-
-			// Read the next object from the pack
-			val, err := pack.read()
-			if err != nil {
-				return nil, err
-			}
-
-			// Set the value bytes into the document for the decoded key
-			doc.Set(docKey, val.data)
-		}
-
-		return doc, nil
-
-	// Nil Document
-	case WireNull:
-		_, _ = depolorizer.read()
-		return nil, nil
-	default:
-		return nil, IncompatibleWireType(wire, WireNull, WireDoc)
-	}
-}
-
-// depolorizeInner decodes another Depolorizer from the Depolorizer.
+// depolorizeInner attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
 // Unlike DepolorizePacked which will expect a compound element and convert it into a packed Depolorizer,
 // depolorizeInner will return the atomic element as an atomic Depolorizer.
 func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
-	if depolorizer.Done() {
-		return nil, ErrInsufficientWire
-	}
-
+	// Read the next element
 	data, err := depolorizer.read()
 	if err != nil {
 		return nil, err
@@ -430,29 +337,23 @@ func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
 	return &Depolorizer{data: data}, nil
 }
 
-// depolorizeInteger decodes an integer from the Depolorizer.
+// depolorizeInteger attempts to decode an integer from the Depolorizer, consuming one wire element.
 // Accepts whether the integer should be signed and its bit-size (8, 16, 32 or 64)
 func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, error) {
-	// Peek the next wire type
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return nil, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
 	}
 
 	// Check that wire is either WirePosInt, WireNegInt or WireNull
-	if !(wire == WirePosInt || wire == WireNegInt || wire == WireNull) {
+	if !(data.wire == WirePosInt || data.wire == WireNegInt || data.wire == WireNull) {
 		expects := []WireType{WireNull, WirePosInt}
 		if signed {
 			expects = append(expects, WireNegInt)
 		}
 
-		return 0, IncompatibleWireType(wire, expects...)
-	}
-
-	// Read the next element
-	data, err := depolorizer.read()
-	if err != nil {
-		return 0, err
+		return 0, IncompatibleWireType(data.wire, expects...)
 	}
 
 	// Check that bit-size value is valid
@@ -474,11 +375,11 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 		}
 	}
 
-	switch wire {
+	switch data.wire {
 	case WirePosInt: // do nothing
 	case WireNegInt:
 		if !signed {
-			return 0, IncompatibleWireType(wire, WireNull, WirePosInt)
+			return 0, IncompatibleWireType(data.wire, WireNull, WirePosInt)
 		}
 
 		// Flip polarity if negative integer
@@ -521,17 +422,16 @@ func (depolorizer *Depolorizer) depolorizeByteArrayValue(target reflect.Type) (r
 // depolorizeSliceValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
 // The target type must be a slice and the next wire element must be WirePack.
 func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (reflect.Value, error) {
-	// Peek the wire type of the next element
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return zeroVal, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return zeroVal, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WirePack:
-		// Get the next element as a pack
-		// depolorizer with the slice elements
-		pack, err := depolorizer.DepolorizePacked()
+		// Get the next element as a pack depolorizer with the slice elements
+		pack, err := newLoadDepolorizer(data)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -568,27 +468,26 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 
 	// Nil Value Slice
 	case WireNull:
-		_, _ = depolorizer.read()
 		return reflect.New(target).Elem(), nil
+
 	default:
-		return zeroVal, IncompatibleWireType(wire, WireNull, WirePack)
+		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
 	}
 }
 
 // depolorizeArrayValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
 // The target type must be an array and the next wire element must be WirePack.
 func (depolorizer *Depolorizer) depolorizeArrayValue(target reflect.Type) (reflect.Value, error) {
-	// Peek the wire type of the next element
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return zeroVal, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return zeroVal, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WirePack:
-		// Get the next element as a pack
-		// depolorizer with the slice elements
-		pack, err := depolorizer.DepolorizePacked()
+		// Get the next element as a pack depolorizer with the array elements
+		pack, err := newLoadDepolorizer(data)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -624,29 +523,28 @@ func (depolorizer *Depolorizer) depolorizeArrayValue(target reflect.Type) (refle
 
 		return array, nil
 
-	// Nil Value Slice
+	// Empty Array
 	case WireNull:
-		_, _ = depolorizer.read()
 		return reflect.New(target).Elem(), nil
+
 	default:
-		return zeroVal, IncompatibleWireType(wire, WireNull, WirePack)
+		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
 	}
 }
 
 // depolorizeMapValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
 // The target type must be a map and the next wire element must be WirePack.
 func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect.Value, error) {
-	// Peek the wire type of the next element
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return zeroVal, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return zeroVal, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WirePack:
-		// Get the next element as a pack
-		// depolorizer with the slice elements
-		pack, err := depolorizer.DepolorizePacked()
+		// Get the next element as a pack depolorizer with the map elements
+		pack, err := newLoadDepolorizer(data)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -689,27 +587,26 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 
 	// Zero Value Map
 	case WireNull:
-		_, _ = depolorizer.read()
 		return reflect.New(target).Elem(), nil
+
 	default:
-		return zeroVal, IncompatibleWireType(wire, WireNull, WirePack)
+		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
 	}
 }
 
 // depolorizeStructValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
 // The target type must be a struct and the next wire element must be WirePack or WireDoc.
 func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (reflect.Value, error) {
-	// Peek the wire type of the next element
-	wire, ok := depolorizer.Peek()
-	if !ok {
-		return zeroVal, ErrInsufficientWire
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return zeroVal, err
 	}
 
-	switch wire {
+	switch data.wire {
 	case WirePack:
-		// Get the next element as a pack
-		// depolorizer with the slice elements
-		pack, err := depolorizer.DepolorizePacked()
+		// Get the next element as a pack depolorizer with the struct field elements
+		pack, err := newLoadDepolorizer(data)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -742,7 +639,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 		return structure, nil
 
 	case WireDoc:
-		doc, err := depolorizer.DepolorizeDocument()
+		doc, err := documentDecode(data)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -795,11 +692,10 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 
 	// Null Struct
 	case WireNull:
-		_, _ = depolorizer.read()
 		return zeroVal, nil
 
 	default:
-		return zeroVal, IncompatibleWireType(wire, WireNull, WirePack, WireDoc)
+		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack, WireDoc)
 	}
 }
 

@@ -152,3 +152,44 @@ func DocumentEncode(object any) (Document, error) {
 		return nil, errors.New("could not encode into document: unsupported type")
 	}
 }
+
+// documentDecode decodes a readbuffer into a Document.
+func documentDecode(data readbuffer) (Document, error) {
+	switch data.wire {
+	case WireDoc:
+		// Get the next element as a pack depolorizer with the slice elements
+		pack, err := newLoadDepolorizer(data)
+		if err != nil {
+			return nil, err
+		}
+
+		doc := make(Document)
+
+		// Iterate on the pack until done
+		for !pack.Done() {
+			// Depolorize the next object from the pack into the Document key (string)
+			docKey, err := pack.DepolorizeString()
+			if err != nil {
+				return nil, err
+			}
+
+			// Read the next object from the pack
+			val, err := pack.read()
+			if err != nil {
+				return nil, err
+			}
+
+			// Set the value bytes into the document for the decoded key
+			doc.Set(docKey, val.data)
+		}
+
+		return doc, nil
+
+	// Nil Document
+	case WireNull:
+		return nil, nil
+
+	default:
+		return nil, IncompatibleWireType(data.wire, WireNull, WireDoc)
+	}
+}
