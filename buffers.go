@@ -10,9 +10,8 @@ import (
 // writebuffer is a write-only byte buffer that appends to a head and body
 // buffer simultaneously. It can be instantiated without a constructor
 type writebuffer struct {
-	head   []byte
-	body   []byte
-	offset uint64
+	head, body      []byte
+	offset, counter uint64
 }
 
 // write appends v to the body of the writebuffer and a varint tag describing its offset and the given WireType.
@@ -20,7 +19,11 @@ type writebuffer struct {
 func (wb *writebuffer) write(w WireType, v []byte) {
 	wb.head = appendVarint(wb.head, (wb.offset<<4)|uint64(w))
 	wb.body = append(wb.body, v...)
+
+	// Increment the offset by the number of bytes written to the body
 	wb.offset += uint64(len(v))
+	// Increment counter to represent the number of written elements
+	wb.counter++
 }
 
 // bytes returns the contents of the writebuffer as a single slice of bytes.
@@ -63,15 +66,6 @@ func newreadbuffer(b []byte) (readbuffer, error) {
 
 	// Create a readbuffer from the wiretype of the tag (first 4 bits)
 	return readbuffer{WireType(tag & 15), b[consumed:]}, nil
-}
-
-// bytes returns the full readbuffer as slice of bytes.
-// It prepends its wiretype to rest of the data.
-func (rb readbuffer) bytes() []byte {
-	rbytes := make([]byte, len(rb.data))
-	copy(rbytes, rb.data)
-
-	return prepend(byte(rb.wire), rbytes)
 }
 
 // load returns a loadreader from a readbuffer.
@@ -146,6 +140,16 @@ func (lr *loadreader) done() bool {
 	return lr.noff == -1
 }
 
+// peek returns the WireType of the next element along with a boolean.
+// Returns (WireNull, false) if there are no elements left in the loadreader.
+func (lr *loadreader) peek() (WireType, bool) {
+	if lr.done() {
+		return WireNull, false
+	}
+
+	return lr.nw, true
+}
+
 // next returns the next element from the loadreader.
 // Returns an error if loadreader is done. (can be checked with a call to done())
 func (lr *loadreader) next() (readbuffer, error) {
@@ -153,7 +157,7 @@ func (lr *loadreader) next() (readbuffer, error) {
 	if lr.head.Len() == 0 {
 		// Check if load reader is done
 		if lr.done() {
-			return readbuffer{}, errors.New("loadreader exhausted")
+			return readbuffer{}, ErrInsufficientWire
 		}
 
 		// Update current values from the next values
@@ -197,14 +201,4 @@ func read(r io.Reader, n int) ([]byte, error) {
 	}
 
 	return d, nil
-}
-
-// prepend is a generic function that accepts an object of some any type and a slice of objects of
-// the same type and inserts the object to the front of the slice and shifts the other elements.
-func prepend[Element any](y Element, x []Element) []Element {
-	x = append(x, *new(Element))
-	copy(x[1:], x)
-	x[0] = y
-
-	return x
 }

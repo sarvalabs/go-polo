@@ -1,49 +1,43 @@
 package polo
 
-import "reflect"
+// Polorizable is an interface for an object that serialize into a Polorizer
+type Polorizable interface {
+	Polorize() (*Polorizer, error)
+}
 
 // Polorize serializes an object into its POLO byte form.
 // Returns an error if object is an unsupported type such as functions or channels.
 func Polorize(object any) ([]byte, error) {
-	var wb writebuffer
-	// Serialize the object into a writebuffer
-	if err := polorize(reflect.ValueOf(object), &wb); err != nil {
-		return nil, EncodeError{err.Error()}
+	// Create a new polorizer
+	polorizer := NewPolorizer()
+
+	// Polorize the object
+	if err := polorizer.Polorize(object); err != nil {
+		return nil, err
 	}
 
 	// Return the bytes of the writebuffer
-	return wb.bytes(), nil
+	return polorizer.wb.bytes(), nil
+}
+
+// Depolorizable is an interface for an object that deserialize its contents from a Depolorizer
+type Depolorizable interface {
+	Depolorize(*Depolorizer) error
 }
 
 // Depolorize deserializes a POLO encoded byte slice into an object.
 // Throws an error if the wire cannot be parsed or if the object is not a pointer.
-func Depolorize(object any, b []byte) error {
-	// Reflect the object and check if it is a pointer
-	v := reflect.ValueOf(object)
-	if v.Kind() != reflect.Ptr {
-		return DecodeError{ErrObjectNotPtr.Error()}
-	}
-
-	// Create a new readbuffer from the given byte slice
-	rb, err := newreadbuffer(b)
+func Depolorize(object any, data []byte) error {
+	// Create a new depolorizer from the data
+	depolorizer, err := NewDepolorizer(data)
 	if err != nil {
-		return DecodeError{err.Error()}
+		return err
 	}
 
-	t := v.Type().Elem()
-
-	// Depolorize the readbuffer into the object
-	result, err := depolorize(t, rb)
-
-	// If there was a parse error or the result is a nil, return
-	if err != nil {
-		return DecodeError{err.Error()}
-	} else if result == nil {
-		return nil
+	// Depolorize the object from the depolorizer
+	if err = depolorizer.Depolorize(object); err != nil {
+		return err
 	}
-
-	// Set the value of the given object
-	v.Elem().Set(reflect.ValueOf(result).Convert(t))
 
 	return nil
 }

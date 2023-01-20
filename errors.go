@@ -3,19 +3,21 @@ package polo
 import (
 	"errors"
 	"fmt"
-)
-
-// varint errors
-var (
-	errVarintTerminated = errors.New("varint terminated prematurely")
-	errVarintOverflow   = errors.New("varint overflows 64-bit integer")
+	"reflect"
+	"strings"
 )
 
 var (
-	// ErrNullStruct is an error for when a struct has been decoded from a null key
-	ErrNullStruct = errors.New("null struct")
+	// zeroVal represents the zero value of reflect.Value.
+	// It acts as a marker for encoding/decoding nil values.
+	zeroVal = reflect.ValueOf(nil)
+
+	// ErrNullPack is an error for when a WireNull is attempted to be converted to a Depolorizer
+	ErrNullPack = errors.New("null pack element")
 	// ErrObjectNotPtr is an error for when a non pointer object is passed to the Depolorize function
 	ErrObjectNotPtr = errors.New("object not a pointer")
+	// ErrInsufficientWire is an error for when the data in depolorizer is exhausted
+	ErrInsufficientWire = errors.New("insufficient data in wire for decode")
 )
 
 // MalformedTagError is an error for when a consumed varint for a tag is malformed
@@ -30,50 +32,36 @@ func (err MalformedTagError) Error() string {
 
 // IncompatibleWireError is an error for when an object cannot be decoded from some wire data
 type IncompatibleWireError struct {
-	expected, actual WireType
+	msg string
 }
 
 // Error implements the error interface for IncompatibleWireError
 func (err IncompatibleWireError) Error() string {
-	return fmt.Sprintf("incompatible wire type. expected: %v. got: %v", err.expected, err.actual)
+	return fmt.Sprintf("incompatible wire: %v", err.msg)
 }
 
-// DecodeError is an error for when an error occurs during decode
-type DecodeError struct {
+// IncompatibleWireType returns an IncompatibleWireError formatted to express
+// the mismatch between an unexpected wire type and the list of expected ones.
+func IncompatibleWireType(actual WireType, expected ...WireType) IncompatibleWireError {
+	expects := make([]string, 0, len(expected))
+	for _, wire := range expected {
+		expects = append(expects, wire.String())
+	}
+
+	data := "{" + strings.Join(expects, `, `) + `}`
+	return IncompatibleWireError{fmt.Sprintf("unexpected wiretype '%v'. expected one of: %v", actual, data)}
+}
+
+// IncompatibleValueError is an error for when an incompatible value is used for encoding
+type IncompatibleValueError struct {
 	msg string
 }
 
-// Error implements the error interface for DecodeError
-func (err DecodeError) Error() string {
-	return fmt.Sprintf("decode error: %v", err.msg)
+// Error implements the error interface for IncompatibleValueError
+func (err IncompatibleValueError) Error() string {
+	return fmt.Sprintf("incompatible value error: %v", err.msg)
 }
 
-// EncodeError is an error for when an error occurs during encode
-type EncodeError struct {
-	msg string
-}
-
-// Error implements the error interface for EncodeError
-func (err EncodeError) Error() string {
-	return fmt.Sprintf("encode error: %v", err.msg)
-}
-
-// PackError is an error for when an error occurs during packing
-type PackError struct {
-	msg string
-}
-
-// Error implements the error interface for PackError
-func (err PackError) Error() string {
-	return fmt.Sprintf("pack error: %v", err.msg)
-}
-
-// UnpackError is an error for when an error occurs during unpacking
-type UnpackError struct {
-	msg string
-}
-
-// Error implements the error interface for UnpackError
-func (err UnpackError) Error() string {
-	return fmt.Sprintf("unpack error: %v", err.msg)
+func UnsupportedTypeError(t reflect.Type) IncompatibleValueError {
+	return IncompatibleValueError{fmt.Sprintf("unsupported type: %v [%v]", t, t.Kind())}
 }

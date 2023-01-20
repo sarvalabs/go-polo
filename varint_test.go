@@ -8,6 +8,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestIsBitSize(t *testing.T) {
+	var x int
+
+	f := fuzz.New()
+	for i := 0; i < 10000; i++ {
+		f.Fuzz(&x)
+
+		switch x {
+		case 8, 16, 32, 64:
+			assert.True(t, isBitSize(x))
+		default:
+			assert.False(t, isBitSize(x))
+		}
+	}
+}
+
 func TestSizeVarint(t *testing.T) {
 	var (
 		v        uint64

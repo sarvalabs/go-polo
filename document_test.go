@@ -162,7 +162,7 @@ func TestDocument_SetObject(t *testing.T) {
 	assert.Equal(t, []byte{6, 104, 101, 108, 108, 111}, doc.Get("bar"))
 
 	err = doc.SetObject("far", make(chan int))
-	assert.EqualError(t, err, "document value could not be encoded for key 'far': encode error: unsupported type: chan int [chan]")
+	assert.EqualError(t, err, "document value could not be encoded for key 'far': incompatible value error: unsupported type: chan int [chan]")
 }
 
 func TestDocument_GetObject(t *testing.T) {
@@ -198,7 +198,7 @@ func TestDocument_GetObject(t *testing.T) {
 	// Attempt to retrieve object from a field with wrong type from Document.
 	// Test error string
 	err = doc.GetObject("bar", &foo)
-	assert.EqualError(t, err, "document value could not be decoded for key 'bar': decode error: incompatible wire type. expected: posint. got: word")
+	assert.EqualError(t, err, "document value could not be decoded for key 'bar': incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}")
 }
 
 func TestDocumentEncode(t *testing.T) {
@@ -255,11 +255,11 @@ func TestDocumentEncode(t *testing.T) {
 
 		{
 			map[string]chan int{"foo": make(chan int)}, nil, nil,
-			"could not encode into document: document value could not be encoded for key 'foo': encode error: unsupported type: chan int [chan]",
+			"could not encode into document: document value could not be encoded for key 'foo': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{
 			ObjectC{make(chan int), "foo"}, nil, nil,
-			"could not encode into document: document value could not be encoded for key 'A': encode error: unsupported type: chan int [chan]",
+			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{nilObject(), nil, nil, "could not encode into document: unsupported type: nil pointer"},
 		{nil, nil, nil, "could not encode into document: unsupported type"},
@@ -308,7 +308,7 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 		{
 			[]byte{14, 79, 6, 22, 54, 102, 66, 3, 64, 102, 111, 111, 1},
 			Document{},
-			"decode error: incompatible wire type. expected: document. got: pack",
+			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}",
 		},
 		{
 			[]byte{0},
@@ -332,4 +332,54 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 			assert.EqualError(t, err, test.err)
 		}
 	}
+}
+
+func TestDocument_DecodeToStruct(t *testing.T) {
+	type Object struct {
+		A int `polo:"boo"`
+		B int `polo:"foo"`
+		C int `polo:"-"`
+	}
+
+	tests := []struct {
+		bytes  []byte
+		target any
+		object any
+		err    string
+	}{
+		{
+			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
+			new(Object), &Object{A: 300}, "",
+		},
+		{
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), &Object{A: 54, B: 89}, "",
+		},
+		{
+			[]byte{13, 95, 6, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), &Object{A: 54, B: 89}, "",
+		},
+		{
+			[]byte{13, 95, 7, 54, 86, 134, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(Object), new(Object),
+			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
+		},
+		{
+			[]byte{13, 47, 6, 54, 98, 111, 111, 142},
+			new(Object), new(Object),
+			"incompatible wire: malformed tag: varint terminated prematurely",
+		},
+	}
+
+	for _, test := range tests {
+		err := Depolorize(test.target, test.bytes)
+		assert.Equal(t, test.object, test.target)
+
+		if test.err == "" {
+			assert.Nil(t, err)
+		} else {
+			assert.EqualError(t, err, test.err)
+		}
+	}
+
 }
