@@ -565,21 +565,21 @@ type BigObject struct {
 }
 
 func TestBig(t *testing.T) {
-	f := fuzz.New().NilChance(0.2).Funcs(func(bignum *big.Int, c fuzz.Continue) {
+	f := fuzz.New().NilChance(0.2).Funcs(func(bignum **big.Int, c fuzz.Continue) {
 		switch c.Intn(10) {
 		case 0:
-			bignum = nil
-		case 1, 2:
-			*bignum = *big.NewInt(0)
-		case 3, 4, 5, 6:
-			*bignum = *big.NewInt(c.Int63())
-		case 7, 8, 9, 10:
-			*bignum = *new(big.Int).Neg(big.NewInt(c.Int63()))
+			*bignum = nil
+		case 1:
+			*bignum = big.NewInt(0)
+		case 2, 3, 4, 5:
+			*bignum = big.NewInt(c.Int63())
+		case 6, 7, 8, 9:
+			*bignum = new(big.Int).Neg(big.NewInt(c.Int63()))
 		}
 	})
 
 	t.Run("Big Int", func(t *testing.T) {
-		var x big.Int
+		var x *big.Int
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
