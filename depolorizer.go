@@ -266,7 +266,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 }
 
 // DepolorizeBigInt attempts to decode a big.Int from the Depolorizer, consuming one wire element.
-// Returns an error if there are no elements left or if the element is not WireBigInt.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
 // Returns a nil big.Int if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 	// Read the next element
@@ -276,15 +276,18 @@ func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 	}
 
 	switch data.wire {
-	case WireBigInt:
+	case WirePosInt:
 		return new(big.Int).SetBytes(data.data), nil
+
+	case WireNegInt:
+		return new(big.Int).Neg(new(big.Int).SetBytes(data.data)), nil
 
 	// Nil big.Int
 	case WireNull:
 		return nil, nil
 
 	default:
-		return nil, IncompatibleWireType(data.wire, WireNull, WireBigInt)
+		return nil, IncompatibleWireType(data.wire, WireNull, WirePosInt, WireNegInt)
 	}
 }
 

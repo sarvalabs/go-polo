@@ -1,6 +1,7 @@
 package polo
 
 import (
+	"math/big"
 	"reflect"
 	"testing"
 
@@ -116,6 +117,22 @@ func TestPolorizer_PolorizeFloat64(t *testing.T) {
 	polorizer.PolorizeFloat64(-99.99)
 	assert.Equal(t, []byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143}, polorizer.Bytes())
 	assert.Equal(t, []byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143}, polorizer.Packed())
+}
+
+func TestPolorizer_PolorizeBigInt(t *testing.T) {
+	polorizer := NewPolorizer()
+
+	polorizer.PolorizeBigInt(big.NewInt(300))
+	assert.Equal(t, []byte{3, 1, 44}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 3, 1, 44}, polorizer.Packed())
+
+	polorizer.PolorizeBigInt(big.NewInt(-250))
+	assert.Equal(t, []byte{14, 47, 3, 36, 1, 44, 250}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 47, 3, 36, 1, 44, 250}, polorizer.Packed())
+
+	polorizer.PolorizeBigInt(nil)
+	assert.Equal(t, []byte{14, 63, 3, 36, 48, 1, 44, 250}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 3, 36, 48, 1, 44, 250}, polorizer.Packed())
 }
 
 func TestPolorizer_PolorizeDocument(t *testing.T) {

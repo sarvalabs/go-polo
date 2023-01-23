@@ -143,10 +143,22 @@ func (polorizer *Polorizer) PolorizeFloat64(value float64) {
 }
 
 // PolorizeBigInt encodes a big.Int into the Polorizer.
-// Encodes the big.Int as its binary form with the wire type being WirePosInt
-// or WireBigInt based on polarity, with zero considered as positive.
+// Encodes the big.Int as its binary form with the wire type being WirePosInt or WireNegInt based on polarity,
+// with zero considered as positive. A nil big.Int is encoded as WireNull.
 func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
-	polorizer.wb.write(WireBigInt, value.Bytes())
+	if value == nil {
+		polorizer.wb.write(WireNull, nil)
+		return
+	}
+
+	switch value.Sign() {
+	case 0:
+		polorizer.wb.write(WirePosInt, nil)
+	case -1:
+		polorizer.wb.write(WireNegInt, value.Bytes())
+	case 1:
+		polorizer.wb.write(WirePosInt, value.Bytes())
+	}
 }
 
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.

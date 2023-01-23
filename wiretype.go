@@ -18,8 +18,9 @@ const (
 	// WireNegInt represents a Binary encoded -ve Integer in BigEndian Order.
 	// The number is encoded as its absolute value and must be multiplied with -1 to get its actual value.
 	WireNegInt WireType = 4
+
 	// WireBigInt represents a Binary encoded arbitrary sized integer
-	WireBigInt WireType = 5
+	// WireBigInt WireType = 5
 
 	// WireWord represents UTF-8 encoded string/bytes
 	WireWord WireType = 6
@@ -50,8 +51,6 @@ func (wiretype WireType) String() string {
 		return "posint"
 	case WireNegInt:
 		return "negint"
-	case WireBigInt:
-		return "bigint"
 	case WireWord:
 		return "word"
 	case WireFloat:

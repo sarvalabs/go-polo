@@ -194,18 +194,22 @@ func TestDepolorizer_DepolorizeFloat64(t *testing.T) {
 }
 
 func TestDepolorizer_DepolorizeBigInt(t *testing.T) {
-	depolorizer, err := NewDepolorizer([]byte{14, 47, 5, 37, 1, 44, 250})
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 36, 1, 44, 250})
 	require.Nil(t, err)
 
 	depolorizer, err = depolorizer.DepolorizePacked()
 	require.Nil(t, err)
 
-	_, err = depolorizer.DepolorizeBigInt()
+	var value *big.Int
+
+	value, err = depolorizer.DepolorizeBigInt()
 	assert.Nil(t, err)
+	assert.Equal(t, value, big.NewInt(300))
 	assert.False(t, depolorizer.Done())
 
-	_, err = depolorizer.DepolorizeBigInt()
+	value, err = depolorizer.DepolorizeBigInt()
 	assert.Nil(t, err)
+	assert.Equal(t, value, big.NewInt(-250))
 	assert.True(t, depolorizer.Done())
 }
 

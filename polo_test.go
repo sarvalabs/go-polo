@@ -565,7 +565,18 @@ type BigObject struct {
 }
 
 func TestBig(t *testing.T) {
-	f := fuzz.New().NilChance(0.2)
+	f := fuzz.New().NilChance(0.2).Funcs(func(bignum *big.Int, c fuzz.Continue) {
+		switch c.Intn(10) {
+		case 0:
+			bignum = nil
+		case 1, 2:
+			*bignum = *big.NewInt(0)
+		case 3, 4, 5, 6:
+			*bignum = *big.NewInt(c.Int63())
+		case 7, 8, 9, 10:
+			*bignum = *new(big.Int).Neg(big.NewInt(c.Int63()))
+		}
+	})
 
 	t.Run("Big Int", func(t *testing.T) {
 		var x big.Int
@@ -946,19 +957,19 @@ func TestIncompatibleWireType(t *testing.T) {
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, word}"},
 		},
 		{
-			[]byte{5, 45, 22},
+			[]byte{3, 45, 22},
 			new([4]string),
-			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{5, 45, 22},
 			new(map[string]string),
-			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'reserved'. expected one of: {null, pack}"},
 		},
 		{
-			[]byte{3, 45, 22},
+			[]byte{7, 45, 22, 56, 34},
 			new(big.Int),
-			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, bigint}"},
+			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, posint, negint}"},
 		},
 		{
 			[]byte{3, 45, 22},
