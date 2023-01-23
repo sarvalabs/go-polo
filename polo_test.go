@@ -257,7 +257,22 @@ type FloatObject struct {
 }
 
 func TestFloat(t *testing.T) {
-	f := fuzz.New()
+	f := fuzz.New().Funcs(
+		func(float *float32, c fuzz.Continue) {
+			if c.Intn(1000) == 0 {
+				*float = 0
+			} else {
+				*float = c.Float32()
+			}
+		},
+		func(float *float64, c fuzz.Continue) {
+			if c.Intn(1000) == 0 {
+				*float = 0
+			} else {
+				*float = c.Float64()
+			}
+		},
+	)
 
 	t.Run("Float32", func(t *testing.T) {
 		var x float32
@@ -1154,7 +1169,7 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 	polorizer.PolorizeInt(int64(object.B))
 
 	if object.C == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 	} else {
 		C := NewPolorizer()
 		for _, elem := range object.C {
@@ -1165,7 +1180,7 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 	}
 
 	if object.D == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 	} else {
 		keys := make([]string, 0, len(object.D))
 		for key := range object.D {

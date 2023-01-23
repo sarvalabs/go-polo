@@ -349,8 +349,17 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 		return nil, err
 	}
 
-	// Check that wire is either WirePosInt, WireNegInt or WireNull
-	if !(data.wire == WirePosInt || data.wire == WireNegInt || data.wire == WireNull) {
+	if data.wire == WireNull {
+		// if number is signed
+		if signed {
+			return int64(0), nil
+		} else {
+			return uint64(0), nil
+		}
+	}
+
+	// Check that wire is either WirePosInt, WireNegInt
+	if !(data.wire == WirePosInt || data.wire == WireNegInt) {
 		expects := []WireType{WireNull, WirePosInt}
 		if signed {
 			expects = append(expects, WireNegInt)
@@ -387,9 +396,6 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 
 		// Flip polarity if negative integer
 		return -int64(number), nil
-
-	case WireNull:
-		number = 0
 	}
 
 	// if number is signed

@@ -53,9 +53,8 @@ func (polorizer *Polorizer) Polorize(value any) error {
 
 // PolorizeNull encodes a null value into the Polorizer.
 // Encodes a WireNull into the head, consuming a position on the wire.
-func (polorizer *Polorizer) PolorizeNull() error {
+func (polorizer *Polorizer) PolorizeNull() {
 	polorizer.wb.write(WireNull, nil)
-	return nil
 }
 
 // PolorizeBytes encodes a bytes value into the Polorizer.
@@ -85,7 +84,7 @@ func (polorizer *Polorizer) PolorizeBool(value bool) {
 // Encodes the integer as it's the binary form (big-endian) with the wire type being WirePosInt.
 func (polorizer *Polorizer) PolorizeUint(value uint64) {
 	if value == 0 {
-		polorizer.wb.write(WirePosInt, nil)
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -100,7 +99,7 @@ func (polorizer *Polorizer) PolorizeUint(value uint64) {
 // being WirePosInt or WireBigInt based on polarity, with zero considered as positive.
 func (polorizer *Polorizer) PolorizeInt(value int64) {
 	if value == 0 {
-		polorizer.wb.write(WirePosInt, nil)
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -125,6 +124,11 @@ func (polorizer *Polorizer) PolorizeInt(value int64) {
 // PolorizeFloat32 encodes a single point precision float into the Polorizer.
 // Encodes the float as its IEEE754 binary form (big-endian) with the wire type being WireFloat.
 func (polorizer *Polorizer) PolorizeFloat32(value float32) {
+	if value == 0 {
+		polorizer.PolorizeNull()
+		return
+	}
+
 	var buffer [4]byte
 
 	// Convert float into IEEE754 binary representation (single point)
@@ -135,6 +139,11 @@ func (polorizer *Polorizer) PolorizeFloat32(value float32) {
 // PolorizeFloat64 encodes a double point precision float into the Polorizer.
 // Encodes the float as its IEEE754 binary form (big-endian) with the wire type being WireFloat.
 func (polorizer *Polorizer) PolorizeFloat64(value float64) {
+	if value == 0 {
+		polorizer.PolorizeNull()
+		return
+	}
+
 	var buffer [8]byte
 
 	// Convert float into IEEE754 binary representation (double point)
@@ -167,7 +176,7 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 	// If pack is nil, encode WireNull
 	if pack == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -181,7 +190,7 @@ func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Nil Document
 	if document == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -215,7 +224,7 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
 	// If inner is nil, encode a WireNull
 	if inner == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -335,7 +344,8 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	// Nil Pointer
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
-			return polorizer.PolorizeNull()
+			polorizer.PolorizeNull()
+			return nil
 		}
 	}
 
@@ -379,7 +389,8 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Slice:
 		// Nil Slice
 		if value.IsNil() {
-			return polorizer.PolorizeNull()
+			polorizer.PolorizeNull()
+			return nil
 		}
 
 		// Byte Slice
@@ -404,7 +415,8 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Map:
 		// Nil Map
 		if value.IsNil() {
-			return polorizer.PolorizeNull()
+			polorizer.PolorizeNull()
+			return nil
 		}
 
 		// Check if value is a polo.Document and encode as such
