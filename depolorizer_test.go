@@ -358,6 +358,7 @@ func TestInsufficientWire(t *testing.T) {
 		{&Depolorizer{data: readbuffer{}, done: true}, new(float32)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(float64)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(big.Int)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(Raw)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(Document)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new([]float64)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new([2]string)},

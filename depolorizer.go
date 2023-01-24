@@ -314,10 +314,10 @@ func (depolorizer *Depolorizer) DepolorizeRaw() (Raw, error) {
 	}
 
 	switch data.wire {
-	case WireNull:
-		return nil, nil
 	case WireRaw:
 		return data.data, nil
+	case WireNull:
+		return nil, nil
 	default:
 		return data.bytes(), nil
 	}
@@ -696,7 +696,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 
 			// Retrieve the data for the field from the document,
 			// if there is no data for the key, skip the field
-			data := doc.Get(fieldName)
+			data := doc.GetRaw(fieldName)
 			if data == nil {
 				continue
 			}

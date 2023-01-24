@@ -67,6 +67,33 @@ func testObject[T any](t *testing.T, x T) {
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
 }
 
+func fuzzRaw(raw *Raw, c fuzz.Continue) {
+	polorizer := NewPolorizer()
+
+	for i := 0; i <= c.Intn(2); i++ {
+		switch c.Intn(8) {
+		case 0:
+			polorizer.PolorizeNull()
+		case 1:
+			polorizer.PolorizeBool(c.RandBool())
+		case 2:
+			polorizer.PolorizeBytes([]byte(c.RandString()))
+		case 3:
+			polorizer.PolorizeString(c.RandString())
+		case 4:
+			polorizer.PolorizeUint(c.Uint64())
+		case 5:
+			polorizer.PolorizeInt(c.Int63())
+		case 6:
+			polorizer.PolorizeFloat64(c.Float64())
+		case 7:
+			polorizer.PolorizeFloat32(c.Float32())
+		}
+	}
+
+	*raw = polorizer.Bytes()
+}
+
 type IntegerObject struct {
 	A int
 	B int8
@@ -619,36 +646,7 @@ type RawObject struct {
 }
 
 func TestRaw(t *testing.T) {
-	f := fuzz.New().Funcs(func(raw *Raw, c fuzz.Continue) {
-		polorizer := NewPolorizer()
-
-		for i := 0; i <= c.Intn(2); i++ {
-			switch c.Intn(9) {
-			case 0:
-				*raw = nil
-				return
-
-			case 1:
-				polorizer.PolorizeNull()
-			case 2:
-				polorizer.PolorizeBool(c.RandBool())
-			case 3:
-				polorizer.PolorizeBytes([]byte(c.RandString()))
-			case 4:
-				polorizer.PolorizeString(c.RandString())
-			case 5:
-				polorizer.PolorizeUint(c.Uint64())
-			case 6:
-				polorizer.PolorizeInt(c.Int63())
-			case 7:
-				polorizer.PolorizeFloat64(c.Float64())
-			case 8:
-				polorizer.PolorizeFloat32(c.Float32())
-			}
-		}
-
-		*raw = polorizer.Bytes()
-	})
+	f := fuzz.New().Funcs(fuzzRaw)
 
 	t.Run("Raw", func(t *testing.T) {
 		var x Raw
@@ -696,6 +694,36 @@ func TestRaw(t *testing.T) {
 			require.Equal(t, Raw(wireC), y.C)
 		}
 	})
+}
+
+func TestRaw_Is(t *testing.T) {
+	tests := []struct {
+		raw Raw
+		is  WireType
+		not WireType
+	}{
+		{nil, WireNull, WirePack},
+		{[]byte{}, WireNull, WireWord},
+		{[]byte{0}, WireNull, WireFloat},
+		{[]byte{6, 109, 97, 110, 105, 115, 104}, WireWord, WireFloat},
+		{[]byte{3, 1, 44}, WirePosInt, WireNegInt},
+	}
+
+	for _, test := range tests {
+		assert.True(t, test.raw.Is(test.is))
+		assert.False(t, test.raw.Is(test.not))
+	}
+}
+
+func TestDocument(t *testing.T) {
+	f := fuzz.New().NilChance(0.01).Funcs(fuzzRaw)
+
+	var x Document
+
+	for i := 0; i < 10000; i++ {
+		f.Fuzz(&x)
+		testObject(t, x)
+	}
 }
 
 type SimpleInterface interface{}
@@ -930,6 +958,15 @@ func TestNullWire(t *testing.T) {
 		require.Nil(t, err)
 		assert.Equal(t, nilmap, *x)
 	})
+
+	t.Run("Raw", func(t *testing.T) {
+		x := new(Raw)
+		err = Depolorize(x, wire)
+
+		var nilraw Raw
+		require.Nil(t, err)
+		assert.Equal(t, nilraw, *x)
+	})
 }
 
 func TestExcessIntegerData(t *testing.T) {
@@ -1088,12 +1125,12 @@ func TestIncompatibleWireType(t *testing.T) {
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
-			[]byte{13, 47, 6, 22, 65, 1},
+			[]byte{13, 47, 6, 21, 65, 1},
 			&IntegerObject{},
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
-			[]byte{13, 95, 7, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			[]byte{13, 95, 7, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
@@ -1177,7 +1214,7 @@ func TestMalformed(t *testing.T) {
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
-			[]byte{13, 63, 6, 54, 86, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			[]byte{13, 63, 6, 53, 86, 101, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			errors.New("insufficient data in wire for decode"),
 		},

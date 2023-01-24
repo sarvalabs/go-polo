@@ -174,6 +174,7 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 // Encodes the Raw directly with the wire type being WireRaw.
 // A nil Raw is encoded as WireNull.
 func (polorizer *Polorizer) PolorizeRaw(value Raw) {
+	// If raw value is nil, encode WireNull
 	if value == nil {
 		polorizer.PolorizeNull()
 		return
@@ -222,7 +223,7 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 		// Write the document key
 		documentWire.PolorizeString(key)
 		// Write the document value
-		documentWire.PolorizeBytes(document[key])
+		documentWire.PolorizeRaw(document[key])
 	}
 
 	// Wrap the document polorizer contents as a WireLoad and
