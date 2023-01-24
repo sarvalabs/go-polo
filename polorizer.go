@@ -23,7 +23,7 @@ func NewPolorizer() *Polorizer {
 //  - If no objects were polorized, it returns a WireNull wire
 //  - If only one object was polorized, it returns the contents directly
 //  - If more than one object was polorized, it returns the contents in a packed wire.
-func (polorizer *Polorizer) Bytes() []byte {
+func (polorizer Polorizer) Bytes() []byte {
 	switch polorizer.wb.counter {
 	case 0:
 		return []byte{0}
@@ -35,7 +35,7 @@ func (polorizer *Polorizer) Bytes() []byte {
 }
 
 // Packed returns the contents of the Polorizer as bytes after packing it and tagging with WirePack.
-func (polorizer *Polorizer) Packed() []byte {
+func (polorizer Polorizer) Packed() []byte {
 	// Declare a new writebuffer
 	var wb writebuffer
 	// Write the contents of the polorized buffer
@@ -156,7 +156,7 @@ func (polorizer *Polorizer) PolorizeFloat64(value float64) {
 // with zero considered as positive. A nil big.Int is encoded as WireNull.
 func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 	if value == nil {
-		polorizer.wb.write(WireNull, nil)
+		polorizer.PolorizeNull()
 		return
 	}
 
@@ -168,6 +168,18 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 	case 1:
 		polorizer.wb.write(WirePosInt, value.Bytes())
 	}
+}
+
+// PolorizeRaw encodes a Raw into the Polorizer.
+// Encodes the Raw directly with the wire type being WireRaw.
+// A nil Raw is encoded as WireNull.
+func (polorizer *Polorizer) PolorizeRaw(value Raw) {
+	if value == nil {
+		polorizer.PolorizeNull()
+		return
+	}
+
+	polorizer.wb.write(WireRaw, value)
 }
 
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.
@@ -390,6 +402,12 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// Nil Slice
 		if value.IsNil() {
 			polorizer.PolorizeNull()
+			return nil
+		}
+
+		// Raw Bytes
+		if value.Type() == reflect.TypeOf(Raw{}) {
+			polorizer.PolorizeRaw(value.Bytes())
 			return nil
 		}
 

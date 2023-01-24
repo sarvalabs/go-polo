@@ -292,7 +292,7 @@ func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 }
 
 // DepolorizeDocument attempts to decode a Document from the Depolorizer, consuming one wire element.
-// Returns an error if there are no elements left, if the element is not WireDoc.
+// Returns an error if there are no elements left or if the element is not WireDoc.
 // Returns nil Document if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	// Read the next element
@@ -302,6 +302,25 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	}
 
 	return documentDecode(data)
+}
+
+// DepolorizeRaw attempts to decode a Raw from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left. Will succeed regardless of the WireType.
+func (depolorizer *Depolorizer) DepolorizeRaw() (Raw, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
+	}
+
+	switch data.wire {
+	case WireNull:
+		return nil, nil
+	case WireRaw:
+		return data.data, nil
+	default:
+		return data.bytes(), nil
+	}
 }
 
 // DepolorizePacked attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
@@ -799,6 +818,11 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 
 	// Slice Value
 	case reflect.Slice:
+		// Raw Bytes
+		if target == reflect.TypeOf(Raw{}) {
+			return reflected(depolorizer.DepolorizeRaw())
+		}
+
 		// Byte Slice
 		if target.Elem().Kind() == reflect.Uint8 {
 			return reflected(depolorizer.DepolorizeBytes())
