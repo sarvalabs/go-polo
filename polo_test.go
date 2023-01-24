@@ -612,6 +612,92 @@ func TestBig(t *testing.T) {
 	})
 }
 
+type RawObject struct {
+	A Raw
+	B Raw
+	C Raw
+}
+
+func TestRaw(t *testing.T) {
+	f := fuzz.New().Funcs(func(raw *Raw, c fuzz.Continue) {
+		polorizer := NewPolorizer()
+
+		for i := 0; i <= c.Intn(2); i++ {
+			switch c.Intn(9) {
+			case 0:
+				*raw = nil
+				return
+
+			case 1:
+				polorizer.PolorizeNull()
+			case 2:
+				polorizer.PolorizeBool(c.RandBool())
+			case 3:
+				polorizer.PolorizeBytes([]byte(c.RandString()))
+			case 4:
+				polorizer.PolorizeString(c.RandString())
+			case 5:
+				polorizer.PolorizeUint(c.Uint64())
+			case 6:
+				polorizer.PolorizeInt(c.Int63())
+			case 7:
+				polorizer.PolorizeFloat64(c.Float64())
+			case 8:
+				polorizer.PolorizeFloat32(c.Float32())
+			}
+		}
+
+		*raw = polorizer.Bytes()
+	})
+
+	t.Run("Raw", func(t *testing.T) {
+		var x Raw
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
+	t.Run("RawObject", func(t *testing.T) {
+		var x RawObject
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
+	t.Run("Raw Decode", func(t *testing.T) {
+		type Object struct {
+			A, B, C int
+		}
+
+		var x Object
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+
+			wire, err := Polorize(x)
+			require.Nil(t, err)
+
+			y := new(RawObject)
+			err = Depolorize(y, wire)
+
+			require.Nil(t, err, "Unexpected Error. Input: %v", x)
+
+			wireA, _ := Polorize(x.A)
+			require.Equal(t, Raw(wireA), y.A)
+
+			wireB, _ := Polorize(x.B)
+			require.Equal(t, Raw(wireB), y.B)
+
+			wireC, _ := Polorize(x.C)
+			require.Equal(t, Raw(wireC), y.C)
+		}
+	})
+}
+
 type SimpleInterface interface{}
 
 type InterfaceObject struct {
@@ -979,7 +1065,7 @@ func TestIncompatibleWireType(t *testing.T) {
 		{
 			[]byte{5, 45, 22},
 			new(map[string]string),
-			IncompatibleWireError{"unexpected wiretype 'reserved'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{7, 45, 22, 56, 34},
