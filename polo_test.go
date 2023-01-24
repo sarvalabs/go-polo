@@ -3,6 +3,7 @@ package polo
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"sort"
 	"testing"
@@ -12,40 +13,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// nolint:lll
-func ExamplePolorize() {
-	type Fruit struct {
-		Name  string
-		Cost  int
-		Alias []string
-	}
+// Fruit is an example for a Go struct
+type Fruit struct {
+	Name  string
+	Cost  int
+	Alias []string
+}
 
+// ExamplePolorize is an example for using the Polorize function to
+// encode a Fruit object into its POLO wire form using Go reflection
+func ExamplePolorize() {
+	// Create a Fruit object
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
 
-	wire, _ := Polorize(orange)
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
 	fmt.Println(wire)
 
 	// Output:
 	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
 }
 
+// ExampleDepolorize is an example for using the Depolorize function to
+// decode a Fruit object from its POLO wire form using Go reflection
 func ExampleDepolorize() {
-	type Fruit struct {
-		Name  string
-		Cost  int
-		Alias []string
-	}
-
 	wire := []byte{
 		14, 79, 6, 99, 142, 1, 111, 114, 97, 110, 103, 101, 1, 44, 63, 6, 150, 1, 116,
 		97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
 	}
 
+	// Create a new instance of Fruit
 	object := new(Fruit)
+	// Deserialize the wire into the Fruit object (must be a pointer)
 	if err := Depolorize(object, wire); err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
+	// Print the deserialized object
 	fmt.Println(object)
 
 	// Output:

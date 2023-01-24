@@ -1,12 +1,43 @@
 package polo
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// ExamplePolorizer is an example for using the Polorizer to encode the fields of a Fruit object
+// using a Polorizer which allows sequential encoding of data into a write-only buffer
+func ExamplePolorizer() {
+	// Create a Fruit object
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Create a new Polorizer
+	polorizer := NewPolorizer()
+
+	// Encode the Name field as a string
+	polorizer.PolorizeString(orange.Name)
+	// Encode the Cost field as an integer
+	polorizer.PolorizeInt(int64(orange.Cost))
+
+	// Create a new Polorizer to serialize the Alias field (slice)
+	aliases := NewPolorizer()
+	// Encode each element in the Alias slice as a string
+	for _, alias := range orange.Alias {
+		aliases.PolorizeString(alias)
+	}
+	// Encode the Polorizer containing the alias field contents as packed data
+	polorizer.PolorizePacked(aliases)
+
+	// Print the serialized bytes in the Polorizer buffer
+	fmt.Println(polorizer.Bytes())
+
+	// Output:
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+}
 
 func TestNewPolorizer(t *testing.T) {
 	polorizer := NewPolorizer()
