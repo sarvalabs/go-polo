@@ -1,6 +1,8 @@
 package polo
 
 import (
+	"fmt"
+	"log"
 	"math/big"
 	"testing"
 
@@ -8,31 +10,98 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ExampleDepolorizer is an example for using the Depolorizer to decode the fields of a Fruit object
+// using a Depolorizer which allows sequential decoding of data from a read-only buffer
+func ExampleDepolorizer() {
+	wire := []byte{
+		14, 79, 6, 99, 142, 1, 111, 114, 97, 110, 103, 101, 1, 44, 63, 6, 150, 1, 116,
+		97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
+	}
+
+	// Create a new instance of Fruit
+	object := new(Fruit)
+
+	// Create a new Pack Depolorizer from the data
+	depolorizer, err := NewPackDepolorizer(wire)
+	if err != nil {
+		log.Fatalln("invalid wire:", err)
+	}
+
+	// Decode the Name field as a string
+	object.Name, err = depolorizer.DepolorizeString()
+	if err != nil {
+		log.Fatalln("invalid field 'Name':", err)
+	}
+
+	// Decode the Cost field as a string
+	Cost, err := depolorizer.DepolorizeInt()
+	if err != nil {
+		log.Fatalln("invalid field 'Cost':", err)
+	}
+	object.Cost = int(Cost)
+
+	// Decode a new Depolorizer to deserialize the Alias field (slice)
+	aliases, err := depolorizer.DepolorizePacked()
+	if err != nil {
+		log.Fatalln("invalid field 'Alias':", err)
+	}
+
+	// Decode each element from the Alias decoder as a string
+	for !aliases.Done() {
+		alias, err := aliases.DepolorizeString()
+		if err != nil {
+			log.Fatalln("invalid field element 'Alias':", err)
+		}
+
+		object.Alias = append(object.Alias, alias)
+	}
+
+	// Print the deserialized object
+	fmt.Println(object)
+
+	// Output:
+	// &{orange 300 [tangerine mandarin]}
+}
+
 func TestNewDepolorizer(t *testing.T) {
 	tests := []struct {
 		data []byte
+		pack bool
 		err  string
-		peek WireType
 		buf  *Depolorizer
 	}{
 		{
-			[]byte{0}, "", WireNull,
+			[]byte{0}, false, "",
 			&Depolorizer{data: readbuffer{WireNull, []byte{}}},
 		},
 		{
-			[]byte{3, 1, 44}, "", WirePosInt,
+			[]byte{3, 1, 44}, false, "",
 			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}},
 		},
 		{
-			[]byte{14, 47, 3, 35, 1, 44, 250}, "", WirePack,
+			[]byte{14, 47, 3, 35, 1, 44, 250}, false, "",
 			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
 		},
+		{
+			[]byte{14, 47, 3, 35, 1, 44, 250}, true, "",
+			&Depolorizer{packed: true, load: newloadreader([]byte{3, 35}, []byte{1, 44, 250})},
+		},
 
-		{[]byte{175}, "incompatible wire: malformed tag: varint terminated prematurely", WireNull, nil},
+		{[]byte{175}, true, "incompatible wire: malformed tag: varint terminated prematurely", nil},
+		{[]byte{175}, false, "incompatible wire: malformed tag: varint terminated prematurely", nil},
+		{[]byte{3, 1, 44}, true, "incompatible wire: unexpected wiretype 'posint'. expected one of: {pack}", nil},
 	}
 
 	for _, test := range tests {
-		depolorizer, err := NewDepolorizer(test.data)
+		var err error
+		var depolorizer *Depolorizer
+
+		if test.pack {
+			depolorizer, err = NewPackDepolorizer(test.data)
+		} else {
+			depolorizer, err = NewDepolorizer(test.data)
+		}
+
 		assert.Equal(t, test.buf, depolorizer)
 
 		if test.err != "" {

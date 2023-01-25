@@ -2,78 +2,113 @@ package polo
 
 import (
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// nolint:lll
-func ExampleDocumentEncode() {
-	type Fruit struct {
-		Name  string
-		Cost  int      `polo:"cost"`
-		Alias []string `polo:"alias"`
+// ExampleDocument is an example for using the Document object's method to partially encode
+// fields as properties into it and then serialize it into document encoded POLO bytes
+func ExampleDocument() {
+	// Create a new Document
+	document := make(Document)
+
+	// Encode the 'Name' field
+	if err := document.Set("Name", "orange"); err != nil {
+		log.Fatalln(err)
 	}
 
-	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
-
-	document, err := DocumentEncode(orange)
-	if err != nil {
-		fmt.Println("error:", err)
+	// Encode the 'cost' field
+	if err := document.Set("cost", 300); err != nil {
+		log.Fatalln(err)
 	}
 
-	fmt.Println("Document:", document)
-
-	wire, err := Polorize(document)
-	if err != nil {
-		fmt.Println("error:", err)
+	// Encode the 'alias' field
+	if err := document.Set("alias", []string{"tangerine", "mandarin"}); err != nil {
+		log.Fatalln(err)
 	}
 
-	fmt.Println("Serialized:", wire)
+	// Print the Document object and it serialized bytes
+	fmt.Println(document)
+	fmt.Println(document.Bytes())
 
 	// Output:
-	// Document: map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
-	// Serialized: [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
+	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
+	// [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
 }
 
-// nolint:lll
-func ExampleDocument_DecodeToDocument() {
+// ExampleDocumentEncode is an example for using DocumentEncode to encode a
+// struct into a Document and then further serializing it into document encoded POLO bytes
+func ExampleDocumentEncode() {
+	// Create a Fruit object
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Encode the object into a Document
+	document, err := DocumentEncode(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the Document object
+	fmt.Println(document)
+
+	// Serialize the Document object
+	// This can also be done with document.Bytes()
+	wire, err := Polorize(document)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized Document
+	fmt.Println(wire)
+
+	// Output:
+	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
+	// [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
+}
+
+// ExampleDocumentDecode_ToDocument is an example of using the Depolorize
+// function to decode a document-encoded wire into a Document object
+func ExampleDocumentDecode_ToDocument() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
 		105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110, 99, 111, 115, 116, 3, 1, 44,
 	}
 
+	// Create a new Document
 	doc := make(Document)
+	// Deserialize the document bytes into a Document
 	if err := Depolorize(&doc, wire); err != nil {
-		fmt.Println("error:", err)
+		log.Fatalln(err)
 	}
 
+	// Print the decoded Document
 	fmt.Println(doc)
 
 	// Output:
 	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
 }
 
-func ExampleDocument_DecodeToStruct() {
-	type Fruit struct {
-		Name  string
-		Cost  int      `polo:"cost"`
-		Alias []string `polo:"alias"`
-	}
-
+// ExampleDocumentDecode_ToStruct is an example of using the Depolorize
+// function to decode a document encoded wire into a Fruit object
+func ExampleDocumentDecode_ToStruct() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
 		105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110, 99, 111, 115, 116, 3, 1, 44,
 	}
 
+	// Create a new instance of Fruit
 	object := new(Fruit)
+	// Deserialize the document bytes into the Fruit object
 	if err := Depolorize(object, wire); err != nil {
-		fmt.Println("error:", err)
+		log.Fatalln(err)
 	}
 
+	// Print the deserialized object
 	fmt.Println(object)
 
 	// Output:

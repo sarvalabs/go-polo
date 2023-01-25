@@ -16,8 +16,8 @@ import (
 // Fruit is an example for a Go struct
 type Fruit struct {
 	Name  string
-	Cost  int
-	Alias []string
+	Cost  int      `polo:"cost"`
+	Alias []string `polo:"alias"`
 }
 
 // ExamplePolorize is an example for using the Polorize function to
@@ -59,6 +59,151 @@ func ExampleDepolorize() {
 
 	// Output:
 	// &{orange 300 [tangerine mandarin]}
+}
+
+// CustomFruit is an example for a Go struct that
+// implements the Polorizable and Depolorizable interfaces
+type CustomFruit struct {
+	Name  string
+	Cost  int
+	Alias []string
+}
+
+// Polorize implements the Polorizable interface for
+// CustomFruit and allows custom serialization of Fruit objects
+func (fruit CustomFruit) Polorize() (*Polorizer, error) {
+	fmt.Println("Custom Serialize for Fruit Invoked")
+
+	// Create a new Polorizer
+	polorizer := NewPolorizer()
+
+	// Encode the Name field as a string
+	polorizer.PolorizeString(fruit.Name)
+	// Encode the Cost field as an integer
+	polorizer.PolorizeInt(int64(fruit.Cost))
+
+	// Create a new Polorizer to serialize the Alias field (slice)
+	aliases := NewPolorizer()
+	// Encode each element in the Alias slice as a string
+	for _, alias := range fruit.Alias {
+		aliases.PolorizeString(alias)
+	}
+	// Encode the Polorizer containing the alias field contents as packed data
+	polorizer.PolorizePacked(aliases)
+
+	return polorizer, nil
+}
+
+// Depolorize implements the Depolorizable interface for
+// CustomFruit and allows custom deserialization of Fruit objects
+func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
+	fmt.Println("Custom Deserialize for Fruit Invoked")
+
+	// Convert the Depolorizer into a pack Depolorizer
+	depolorizer, err = depolorizer.DepolorizePacked()
+	if err != nil {
+		return fmt.Errorf("invalid wire: not a pack: %w", err)
+	}
+
+	// Decode the Name field as a string
+	fruit.Name, err = depolorizer.DepolorizeString()
+	if err != nil {
+		log.Fatalln("invalid field 'Name':", err)
+	}
+
+	// Decode the Cost field as a string
+	Cost, err := depolorizer.DepolorizeInt()
+	if err != nil {
+		log.Fatalln("invalid field 'Cost':", err)
+	}
+	fruit.Cost = int(Cost)
+
+	// Decode a new Depolorizer to deserialize the Alias field (slice)
+	aliases, err := depolorizer.DepolorizePacked()
+	if err != nil {
+		log.Fatalln("invalid field 'Alias':", err)
+	}
+
+	// Decode each element from the Alias decoder as a string
+	for !aliases.Done() {
+		alias, err := aliases.DepolorizeString()
+		if err != nil {
+			log.Fatalln("invalid field element 'Alias':", err)
+		}
+
+		fruit.Alias = append(fruit.Alias, alias)
+	}
+
+	return nil
+}
+
+// ExampleCustomEncoding is an example for using custom serialization and deserialization on the
+// CustomFruit type by implementing the Polorizable and Depolorizable interfaces for it.
+func ExampleCustomEncoding() {
+	// Create a CustomFruit object
+	orange := &CustomFruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
+	fmt.Println(wire)
+
+	// Create a new instance of CustomFruit
+	object := new(CustomFruit)
+	// Deserialize the wire into the CustomFruit object (must be a pointer)
+	if err := Depolorize(object, wire); err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the deserialized object
+	fmt.Println(object)
+
+	// Output:
+	// Custom Serialize for Fruit Invoked
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+	// Custom Deserialize for Fruit Invoked
+	// &{orange 300 [tangerine mandarin]}
+}
+
+// ExampleRawDecoding is an example for using the Raw type to capture
+// the raw POLO encoded bytes for a specific field of the Fruit object.
+func ExampleRawDecoding() {
+	// RawFruit is a struct that can capture the raw POLO bytes of each field
+	type RawFruit struct {
+		Name  Raw
+		Cost  int
+		Alias []string
+	}
+
+	// Create a Fruit object
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
+	fmt.Println(wire)
+
+	// Create a new instance of RawFruit
+	object := new(RawFruit)
+	// Deserialize the wire into the RawFruit object (must be a pointer)
+	if err := Depolorize(object, wire); err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the deserialized object
+	fmt.Println(object)
+
+	// Output:
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+	// &{[6 111 114 97 110 103 101] 300 [tangerine mandarin]}
 }
 
 func testObject[T any](t *testing.T, x T) {
