@@ -34,6 +34,22 @@ func NewDepolorizer(data []byte) (*Depolorizer, error) {
 	return &Depolorizer{data: rb}, nil
 }
 
+func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
+	// Create a new readbuffer from the wire
+	rb, err := newreadbuffer(data)
+	if err != nil {
+		return nil, IncompatibleWireError{err.Error()}
+	}
+
+	// Check that wire type is WirePack
+	if rb.wire != WirePack {
+		return nil, IncompatibleWireType(rb.wire, WirePack)
+	}
+
+	// Create a pack Depolorizer
+	return newLoadDepolorizer(rb)
+}
+
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
 // The readbuffer is converted into a loadreader and the returned Depolorizer is created in packed mode.
 func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
