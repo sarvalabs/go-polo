@@ -19,7 +19,7 @@ func TestWireType(t *testing.T) {
 		WireTrue:     "true",
 		WirePosInt:   "posint",
 		WireNegInt:   "negint",
-		WireBigInt:   "bigint",
+		WireRaw:      "raw",
 		WireWord:     "word",
 		WireFloat:    "float",
 		WireType(8):  "reserved",

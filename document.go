@@ -8,7 +8,7 @@ import (
 
 // Document is a representation for a string indexed collection of encoded object data.
 // It represents an intermediary access format with objects settable/gettable with string keys.
-type Document map[string][]byte
+type Document map[string]Raw
 
 // Size returns the number of elements in a Document
 func (doc Document) Size() int {
@@ -17,40 +17,30 @@ func (doc Document) Size() int {
 
 // Bytes returns the POLO wire representation of a Document
 func (doc Document) Bytes() []byte {
-	data, _ := Polorize(doc)
-	return data
+	polorizer := NewPolorizer()
+	polorizer.PolorizeDocument(doc)
+	return polorizer.Bytes()
 }
 
-// Get retrieves some raw byte data for a given key from a Document.
+// GetRaw retrieves some raw byte data for a given key from a Document.
 // Return nil if there is no data for the key.
-func (doc Document) Get(key string) []byte {
+func (doc Document) GetRaw(key string) Raw {
 	return doc[key]
 }
 
-// Set inserts some raw byte data for a given key into a Document.
+// SetRaw inserts some raw byte data for a given key into a Document.
 // Any existing data at the given key is overwritten.
-func (doc Document) Set(key string, val []byte) {
+func (doc Document) SetRaw(key string, val Raw) {
 	doc[key] = val
 }
 
-// Is returns whether the POLO encoded data for some given key has a specific wire type.
-// If key does not exist or has no data in the document, it is considered as WireNull.
-func (doc Document) Is(key string, kind WireType) bool {
-	data := doc.Get(key)
-	if len(data) == 0 {
-		return kind == WireNull
-	}
-
-	return data[0] == byte(kind)
-}
-
-// GetObject retrieves some object for some given key from a Document.
+// Get retrieves some object for some given key from a Document.
 // The data for the given key is decoded from its POLO form into the given object which must be a pointer.
 // Returns an error if there is no data for the key or if the data could not be decoded into the given object.
-func (doc Document) GetObject(key string, object any) error {
+func (doc Document) Get(key string, object any) error {
 	// Retrieve the data for the key and error if unavailable
 	var data []byte
-	if data = doc[key]; data == nil {
+	if data = doc.GetRaw(key); data == nil {
 		return fmt.Errorf("document value not found for key '%v'", key)
 	}
 
@@ -62,10 +52,10 @@ func (doc Document) GetObject(key string, object any) error {
 	return nil
 }
 
-// SetObject inserts some object for some given key into a Document.
+// Set inserts some object for some given key into a Document.
 // The given object is encoded into its POLO form and inserted, overwriting any existing data.
 // Returns an error if the given object cannot be serialized with Polorize().
-func (doc Document) SetObject(key string, object any) error {
+func (doc Document) Set(key string, object any) error {
 	// Polorize the object into its wire form. Return any error that occurs
 	data, err := Polorize(object)
 	if err != nil {
@@ -73,7 +63,7 @@ func (doc Document) SetObject(key string, object any) error {
 	}
 
 	// Insert the wire data for the key
-	doc.Set(key, data)
+	doc.SetRaw(key, data)
 	return nil
 }
 
@@ -108,7 +98,7 @@ func DocumentEncode(object any) (Document, error) {
 
 		// For each key in the map, encode the value and set it with the string key
 		for _, k := range v.MapKeys() {
-			if err := doc.SetObject(k.String(), v.MapIndex(k).Interface()); err != nil {
+			if err := doc.Set(k.String(), v.MapIndex(k).Interface()); err != nil {
 				return nil, fmt.Errorf("could not encode into document: %w", err)
 			}
 		}
@@ -141,7 +131,7 @@ func DocumentEncode(object any) (Document, error) {
 				fieldName = tag
 			}
 
-			if err := doc.SetObject(fieldName, v.Field(i).Interface()); err != nil {
+			if err := doc.Set(fieldName, v.Field(i).Interface()); err != nil {
 				return nil, fmt.Errorf("could not encode into document: %w", err)
 			}
 		}
@@ -179,8 +169,13 @@ func documentDecode(data readbuffer) (Document, error) {
 				return nil, err
 			}
 
+			// Check that element is WireRaw
+			if val.wire != WireRaw {
+				return nil, IncompatibleWireType(val.wire, WireRaw)
+			}
+
 			// Set the value bytes into the document for the decoded key
-			doc.Set(docKey, val.data)
+			doc.SetRaw(docKey, val.data)
 		}
 
 		return doc, nil

@@ -41,3 +41,15 @@ func Depolorize(object any, data []byte) error {
 
 	return nil
 }
+
+// Raw is a container for raw POLO encoded data
+type Raw []byte
+
+// Is returns whether the raw POLO data is of a certain wire type
+func (raw Raw) Is(kind WireType) bool {
+	if len(raw) == 0 {
+		return kind == WireNull
+	}
+
+	return raw[0] == byte(kind)
+}

@@ -3,6 +3,7 @@ package polo
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"sort"
 	"testing"
@@ -12,44 +13,197 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// nolint:lll
-func ExamplePolorize() {
-	type Fruit struct {
-		Name  string
-		Cost  int
-		Alias []string
-	}
+// Fruit is an example for a Go struct
+type Fruit struct {
+	Name  string
+	Cost  int      `polo:"cost"`
+	Alias []string `polo:"alias"`
+}
 
+// ExamplePolorize is an example for using the Polorize function to
+// encode a Fruit object into its POLO wire form using Go reflection
+func ExamplePolorize() {
+	// Create a Fruit object
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
 
-	wire, _ := Polorize(orange)
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
 	fmt.Println(wire)
 
 	// Output:
 	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
 }
 
+// ExampleDepolorize is an example for using the Depolorize function to
+// decode a Fruit object from its POLO wire form using Go reflection
 func ExampleDepolorize() {
-	type Fruit struct {
-		Name  string
-		Cost  int
-		Alias []string
-	}
-
 	wire := []byte{
 		14, 79, 6, 99, 142, 1, 111, 114, 97, 110, 103, 101, 1, 44, 63, 6, 150, 1, 116,
 		97, 110, 103, 101, 114, 105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110,
 	}
 
+	// Create a new instance of Fruit
 	object := new(Fruit)
+	// Deserialize the wire into the Fruit object (must be a pointer)
 	if err := Depolorize(object, wire); err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
+	// Print the deserialized object
 	fmt.Println(object)
 
 	// Output:
 	// &{orange 300 [tangerine mandarin]}
+}
+
+// CustomFruit is an example for a Go struct that
+// implements the Polorizable and Depolorizable interfaces
+type CustomFruit struct {
+	Name  string
+	Cost  int
+	Alias []string
+}
+
+// Polorize implements the Polorizable interface for
+// CustomFruit and allows custom serialization of Fruit objects
+func (fruit CustomFruit) Polorize() (*Polorizer, error) {
+	fmt.Println("Custom Serialize for Fruit Invoked")
+
+	// Create a new Polorizer
+	polorizer := NewPolorizer()
+
+	// Encode the Name field as a string
+	polorizer.PolorizeString(fruit.Name)
+	// Encode the Cost field as an integer
+	polorizer.PolorizeInt(int64(fruit.Cost))
+
+	// Create a new Polorizer to serialize the Alias field (slice)
+	aliases := NewPolorizer()
+	// Encode each element in the Alias slice as a string
+	for _, alias := range fruit.Alias {
+		aliases.PolorizeString(alias)
+	}
+	// Encode the Polorizer containing the alias field contents as packed data
+	polorizer.PolorizePacked(aliases)
+
+	return polorizer, nil
+}
+
+// Depolorize implements the Depolorizable interface for
+// CustomFruit and allows custom deserialization of Fruit objects
+func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
+	fmt.Println("Custom Deserialize for Fruit Invoked")
+
+	// Convert the Depolorizer into a pack Depolorizer
+	depolorizer, err = depolorizer.DepolorizePacked()
+	if err != nil {
+		return fmt.Errorf("invalid wire: not a pack: %w", err)
+	}
+
+	// Decode the Name field as a string
+	fruit.Name, err = depolorizer.DepolorizeString()
+	if err != nil {
+		log.Fatalln("invalid field 'Name':", err)
+	}
+
+	// Decode the Cost field as a string
+	Cost, err := depolorizer.DepolorizeInt()
+	if err != nil {
+		log.Fatalln("invalid field 'Cost':", err)
+	}
+	fruit.Cost = int(Cost)
+
+	// Decode a new Depolorizer to deserialize the Alias field (slice)
+	aliases, err := depolorizer.DepolorizePacked()
+	if err != nil {
+		log.Fatalln("invalid field 'Alias':", err)
+	}
+
+	// Decode each element from the Alias decoder as a string
+	for !aliases.Done() {
+		alias, err := aliases.DepolorizeString()
+		if err != nil {
+			log.Fatalln("invalid field element 'Alias':", err)
+		}
+
+		fruit.Alias = append(fruit.Alias, alias)
+	}
+
+	return nil
+}
+
+// ExampleCustomEncoding is an example for using custom serialization and deserialization on the
+// CustomFruit type by implementing the Polorizable and Depolorizable interfaces for it.
+func ExampleCustomEncoding() {
+	// Create a CustomFruit object
+	orange := &CustomFruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
+	fmt.Println(wire)
+
+	// Create a new instance of CustomFruit
+	object := new(CustomFruit)
+	// Deserialize the wire into the CustomFruit object (must be a pointer)
+	if err := Depolorize(object, wire); err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the deserialized object
+	fmt.Println(object)
+
+	// Output:
+	// Custom Serialize for Fruit Invoked
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+	// Custom Deserialize for Fruit Invoked
+	// &{orange 300 [tangerine mandarin]}
+}
+
+// ExampleRawDecoding is an example for using the Raw type to capture
+// the raw POLO encoded bytes for a specific field of the Fruit object.
+func ExampleRawDecoding() {
+	// RawFruit is a struct that can capture the raw POLO bytes of each field
+	type RawFruit struct {
+		Name  Raw
+		Cost  int
+		Alias []string
+	}
+
+	// Create a Fruit object
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Serialize the Fruit object
+	wire, err := Polorize(orange)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the serialized bytes
+	fmt.Println(wire)
+
+	// Create a new instance of RawFruit
+	object := new(RawFruit)
+	// Deserialize the wire into the RawFruit object (must be a pointer)
+	if err := Depolorize(object, wire); err != nil {
+		log.Fatalln(err)
+	}
+
+	// Print the deserialized object
+	fmt.Println(object)
+
+	// Output:
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+	// &{[6 111 114 97 110 103 101] 300 [tangerine mandarin]}
 }
 
 func testObject[T any](t *testing.T, x T) {
@@ -65,6 +219,33 @@ func testObject[T any](t *testing.T, x T) {
 	rewire, err := Polorize(*y)
 	require.Nil(t, err)
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
+}
+
+func fuzzRaw(raw *Raw, c fuzz.Continue) {
+	polorizer := NewPolorizer()
+
+	for i := 0; i <= c.Intn(2); i++ {
+		switch c.Intn(8) {
+		case 0:
+			polorizer.PolorizeNull()
+		case 1:
+			polorizer.PolorizeBool(c.RandBool())
+		case 2:
+			polorizer.PolorizeBytes([]byte(c.RandString()))
+		case 3:
+			polorizer.PolorizeString(c.RandString())
+		case 4:
+			polorizer.PolorizeUint(c.Uint64())
+		case 5:
+			polorizer.PolorizeInt(c.Int63())
+		case 6:
+			polorizer.PolorizeFloat64(c.Float64())
+		case 7:
+			polorizer.PolorizeFloat32(c.Float32())
+		}
+	}
+
+	*raw = polorizer.Bytes()
 }
 
 type IntegerObject struct {
@@ -257,7 +438,22 @@ type FloatObject struct {
 }
 
 func TestFloat(t *testing.T) {
-	f := fuzz.New()
+	f := fuzz.New().Funcs(
+		func(float *float32, c fuzz.Continue) {
+			if c.Intn(1000) == 0 {
+				*float = 0
+			} else {
+				*float = c.Float32()
+			}
+		},
+		func(float *float64, c fuzz.Continue) {
+			if c.Intn(1000) == 0 {
+				*float = 0
+			} else {
+				*float = c.Float64()
+			}
+		},
+	)
 
 	t.Run("Float32", func(t *testing.T) {
 		var x float32
@@ -565,10 +761,21 @@ type BigObject struct {
 }
 
 func TestBig(t *testing.T) {
-	f := fuzz.New().NilChance(0.2)
+	f := fuzz.New().NilChance(0.2).Funcs(func(bignum **big.Int, c fuzz.Continue) {
+		switch c.Intn(10) {
+		case 0:
+			*bignum = nil
+		case 1:
+			*bignum = big.NewInt(0)
+		case 2, 3, 4, 5:
+			*bignum = big.NewInt(c.Int63())
+		case 6, 7, 8, 9:
+			*bignum = new(big.Int).Neg(big.NewInt(c.Int63()))
+		}
+	})
 
 	t.Run("Big Int", func(t *testing.T) {
-		var x big.Int
+		var x *big.Int
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
@@ -584,6 +791,93 @@ func TestBig(t *testing.T) {
 			testObject(t, x)
 		}
 	})
+}
+
+type RawObject struct {
+	A Raw
+	B Raw
+	C Raw
+}
+
+func TestRaw(t *testing.T) {
+	f := fuzz.New().Funcs(fuzzRaw)
+
+	t.Run("Raw", func(t *testing.T) {
+		var x Raw
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
+	t.Run("RawObject", func(t *testing.T) {
+		var x RawObject
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
+	t.Run("Raw Decode", func(t *testing.T) {
+		type Object struct {
+			A, B, C int
+		}
+
+		var x Object
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+
+			wire, err := Polorize(x)
+			require.Nil(t, err)
+
+			y := new(RawObject)
+			err = Depolorize(y, wire)
+
+			require.Nil(t, err, "Unexpected Error. Input: %v", x)
+
+			wireA, _ := Polorize(x.A)
+			require.Equal(t, Raw(wireA), y.A)
+
+			wireB, _ := Polorize(x.B)
+			require.Equal(t, Raw(wireB), y.B)
+
+			wireC, _ := Polorize(x.C)
+			require.Equal(t, Raw(wireC), y.C)
+		}
+	})
+}
+
+func TestRaw_Is(t *testing.T) {
+	tests := []struct {
+		raw Raw
+		is  WireType
+		not WireType
+	}{
+		{nil, WireNull, WirePack},
+		{[]byte{}, WireNull, WireWord},
+		{[]byte{0}, WireNull, WireFloat},
+		{[]byte{6, 109, 97, 110, 105, 115, 104}, WireWord, WireFloat},
+		{[]byte{3, 1, 44}, WirePosInt, WireNegInt},
+	}
+
+	for _, test := range tests {
+		assert.True(t, test.raw.Is(test.is))
+		assert.False(t, test.raw.Is(test.not))
+	}
+}
+
+func TestDocument(t *testing.T) {
+	f := fuzz.New().NilChance(0.01).Funcs(fuzzRaw)
+
+	var x Document
+
+	for i := 0; i < 10000; i++ {
+		f.Fuzz(&x)
+		testObject(t, x)
+	}
 }
 
 type SimpleInterface interface{}
@@ -818,6 +1112,15 @@ func TestNullWire(t *testing.T) {
 		require.Nil(t, err)
 		assert.Equal(t, nilmap, *x)
 	})
+
+	t.Run("Raw", func(t *testing.T) {
+		x := new(Raw)
+		err = Depolorize(x, wire)
+
+		var nilraw Raw
+		require.Nil(t, err)
+		assert.Equal(t, nilraw, *x)
+	})
 }
 
 func TestExcessIntegerData(t *testing.T) {
@@ -946,19 +1249,19 @@ func TestIncompatibleWireType(t *testing.T) {
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, word}"},
 		},
 		{
-			[]byte{5, 45, 22},
+			[]byte{3, 45, 22},
 			new([4]string),
-			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{5, 45, 22},
 			new(map[string]string),
-			IncompatibleWireError{"unexpected wiretype 'bigint'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, pack}"},
 		},
 		{
-			[]byte{3, 45, 22},
+			[]byte{7, 45, 22, 56, 34},
 			new(big.Int),
-			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, bigint}"},
+			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, posint, negint}"},
 		},
 		{
 			[]byte{3, 45, 22},
@@ -976,12 +1279,12 @@ func TestIncompatibleWireType(t *testing.T) {
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
-			[]byte{13, 47, 6, 22, 65, 1},
+			[]byte{13, 47, 6, 21, 65, 1},
 			&IntegerObject{},
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
-			[]byte{13, 95, 7, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			[]byte{13, 95, 7, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
@@ -1065,7 +1368,7 @@ func TestMalformed(t *testing.T) {
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
-			[]byte{13, 63, 6, 54, 86, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
+			[]byte{13, 63, 6, 53, 86, 101, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			errors.New("insufficient data in wire for decode"),
 		},
@@ -1143,7 +1446,7 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 	polorizer.PolorizeInt(int64(object.B))
 
 	if object.C == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 	} else {
 		C := NewPolorizer()
 		for _, elem := range object.C {
@@ -1154,7 +1457,7 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 	}
 
 	if object.D == nil {
-		_ = polorizer.PolorizeNull()
+		polorizer.PolorizeNull()
 	} else {
 		keys := make([]string, 0, len(object.D))
 		for key := range object.D {

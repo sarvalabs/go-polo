@@ -34,6 +34,22 @@ func NewDepolorizer(data []byte) (*Depolorizer, error) {
 	return &Depolorizer{data: rb}, nil
 }
 
+func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
+	// Create a new readbuffer from the wire
+	rb, err := newreadbuffer(data)
+	if err != nil {
+		return nil, IncompatibleWireError{err.Error()}
+	}
+
+	// Check that wire type is WirePack
+	if rb.wire != WirePack {
+		return nil, IncompatibleWireType(rb.wire, WirePack)
+	}
+
+	// Create a pack Depolorizer
+	return newLoadDepolorizer(rb)
+}
+
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
 // The readbuffer is converted into a loadreader and the returned Depolorizer is created in packed mode.
 func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
@@ -266,7 +282,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 }
 
 // DepolorizeBigInt attempts to decode a big.Int from the Depolorizer, consuming one wire element.
-// Returns an error if there are no elements left or if the element is not WireBigInt.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
 // Returns a nil big.Int if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 	// Read the next element
@@ -276,20 +292,23 @@ func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 	}
 
 	switch data.wire {
-	case WireBigInt:
+	case WirePosInt:
 		return new(big.Int).SetBytes(data.data), nil
+
+	case WireNegInt:
+		return new(big.Int).Neg(new(big.Int).SetBytes(data.data)), nil
 
 	// Nil big.Int
 	case WireNull:
 		return nil, nil
 
 	default:
-		return nil, IncompatibleWireType(data.wire, WireNull, WireBigInt)
+		return nil, IncompatibleWireType(data.wire, WireNull, WirePosInt, WireNegInt)
 	}
 }
 
 // DepolorizeDocument attempts to decode a Document from the Depolorizer, consuming one wire element.
-// Returns an error if there are no elements left, if the element is not WireDoc.
+// Returns an error if there are no elements left or if the element is not WireDoc.
 // Returns nil Document if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	// Read the next element
@@ -299,6 +318,25 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 	}
 
 	return documentDecode(data)
+}
+
+// DepolorizeRaw attempts to decode a Raw from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left. Will succeed regardless of the WireType.
+func (depolorizer *Depolorizer) DepolorizeRaw() (Raw, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return nil, err
+	}
+
+	switch data.wire {
+	case WireRaw:
+		return data.data, nil
+	case WireNull:
+		return nil, nil
+	default:
+		return data.bytes(), nil
+	}
 }
 
 // DepolorizePacked attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
@@ -346,8 +384,17 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 		return nil, err
 	}
 
-	// Check that wire is either WirePosInt, WireNegInt or WireNull
-	if !(data.wire == WirePosInt || data.wire == WireNegInt || data.wire == WireNull) {
+	if data.wire == WireNull {
+		// if number is signed
+		if signed {
+			return int64(0), nil
+		} else {
+			return uint64(0), nil
+		}
+	}
+
+	// Check that wire is either WirePosInt, WireNegInt
+	if !(data.wire == WirePosInt || data.wire == WireNegInt) {
 		expects := []WireType{WireNull, WirePosInt}
 		if signed {
 			expects = append(expects, WireNegInt)
@@ -384,9 +431,6 @@ func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, e
 
 		// Flip polarity if negative integer
 		return -int64(number), nil
-
-	case WireNull:
-		number = 0
 	}
 
 	// if number is signed
@@ -668,7 +712,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 
 			// Retrieve the data for the field from the document,
 			// if there is no data for the key, skip the field
-			data := doc.Get(fieldName)
+			data := doc.GetRaw(fieldName)
 			if data == nil {
 				continue
 			}
@@ -790,6 +834,11 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 
 	// Slice Value
 	case reflect.Slice:
+		// Raw Bytes
+		if target == reflect.TypeOf(Raw{}) {
+			return reflected(depolorizer.DepolorizeRaw())
+		}
+
 		// Byte Slice
 		if target.Elem().Kind() == reflect.Uint8 {
 			return reflected(depolorizer.DepolorizeBytes())

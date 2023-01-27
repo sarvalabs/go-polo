@@ -1,11 +1,43 @@
 package polo
 
 import (
+	"fmt"
+	"math/big"
 	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// ExamplePolorizer is an example for using the Polorizer to encode the fields of a Fruit object
+// using a Polorizer which allows sequential encoding of data into a write-only buffer
+func ExamplePolorizer() {
+	// Create a Fruit object
+	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
+
+	// Create a new Polorizer
+	polorizer := NewPolorizer()
+
+	// Encode the Name field as a string
+	polorizer.PolorizeString(orange.Name)
+	// Encode the Cost field as an integer
+	polorizer.PolorizeInt(int64(orange.Cost))
+
+	// Create a new Polorizer to serialize the Alias field (slice)
+	aliases := NewPolorizer()
+	// Encode each element in the Alias slice as a string
+	for _, alias := range orange.Alias {
+		aliases.PolorizeString(alias)
+	}
+	// Encode the Polorizer containing the alias field contents as packed data
+	polorizer.PolorizePacked(aliases)
+
+	// Print the serialized bytes in the Polorizer buffer
+	fmt.Println(polorizer.Bytes())
+
+	// Output:
+	// [14 79 6 99 142 1 111 114 97 110 103 101 1 44 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110]
+}
 
 func TestNewPolorizer(t *testing.T) {
 	polorizer := NewPolorizer()
@@ -118,19 +150,51 @@ func TestPolorizer_PolorizeFloat64(t *testing.T) {
 	assert.Equal(t, []byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143}, polorizer.Packed())
 }
 
+func TestPolorizer_PolorizeBigInt(t *testing.T) {
+	polorizer := NewPolorizer()
+
+	polorizer.PolorizeBigInt(big.NewInt(300))
+	assert.Equal(t, []byte{3, 1, 44}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 3, 1, 44}, polorizer.Packed())
+
+	polorizer.PolorizeBigInt(big.NewInt(-250))
+	assert.Equal(t, []byte{14, 47, 3, 36, 1, 44, 250}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 47, 3, 36, 1, 44, 250}, polorizer.Packed())
+
+	polorizer.PolorizeBigInt(nil)
+	assert.Equal(t, []byte{14, 63, 3, 36, 48, 1, 44, 250}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 3, 36, 48, 1, 44, 250}, polorizer.Packed())
+}
+
+func TestPolorizer_PolorizeRaw(t *testing.T) {
+	polorizer := NewPolorizer()
+
+	polorizer.PolorizeRaw(Raw{6, 98, 111, 111})
+	assert.Equal(t, []byte{5, 6, 98, 111, 111}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 5, 6, 98, 111, 111}, polorizer.Packed())
+
+	polorizer.PolorizeRaw(Raw{0})
+	assert.Equal(t, []byte{14, 47, 5, 69, 6, 98, 111, 111, 0}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 47, 5, 69, 6, 98, 111, 111, 0}, polorizer.Packed())
+
+	polorizer.PolorizeRaw(nil)
+	assert.Equal(t, []byte{14, 63, 5, 69, 80, 6, 98, 111, 111, 0}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 5, 69, 80, 6, 98, 111, 111, 0}, polorizer.Packed())
+}
+
 func TestPolorizer_PolorizeDocument(t *testing.T) {
 	document := make(Document)
-	_ = document.SetObject("far", 123)
-	_ = document.SetObject("foo", "bar")
+	_ = document.Set("far", 123)
+	_ = document.Set("foo", "bar")
 
 	polorizer := NewPolorizer()
 	polorizer.PolorizeDocument(document)
-	assert.Equal(t, []byte{13, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 31, 13, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
+	assert.Equal(t, []byte{13, 95, 6, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 13, 95, 6, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
 
 	polorizer.PolorizeDocument(nil)
-	assert.Equal(t, []byte{14, 63, 13, 160, 2, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
-	assert.Equal(t, []byte{14, 63, 13, 160, 2, 95, 6, 54, 86, 134, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
+	assert.Equal(t, []byte{14, 63, 13, 160, 2, 95, 6, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
+	assert.Equal(t, []byte{14, 63, 13, 160, 2, 95, 6, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114}, polorizer.Packed())
 }
 
 func TestPolorizer_PolorizePacked(t *testing.T) {
