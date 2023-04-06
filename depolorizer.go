@@ -495,8 +495,6 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 			// Create a value based on the nullity of val
 			var sliceVal reflect.Value
 			if val == zeroVal {
-				fmt.Println("here")
-
 				// Create a nil value
 				sliceVal = reflect.New(sliceElem).Elem()
 			} else {
