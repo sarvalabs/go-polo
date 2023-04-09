@@ -44,13 +44,13 @@ https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c0
 ### Custom Polorization & Depolorization (Encoding/Decoding)
 https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polo_test.go#L64-L170
 
-### Raw Decoding
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polo_test.go#L172-L207
+### Wire Decoding with `Any`
+https://github.com/sarvalabs/go-polo/blob/95c01c91e9e3ceabc99d530e78a4f8bedadc13a1/polo_test.go#L172-L207
 
-### Polorizer (Encoding Buffer)
+### `Polorizer` (Encoding Buffer)
 https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polorizer_test.go#L12-L40
 
-### Depolorizer (Decoding Buffer)
+### `Depolorizer` (Decoding Buffer)
 https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/depolorizer_test.go#L13-L64
 
 ### Document Encoding
