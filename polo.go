@@ -51,5 +51,5 @@ func (raw Raw) Is(kind WireType) bool {
 		return kind == WireNull
 	}
 
-	return raw[0] == byte(kind)
+	return raw[0]&15 == byte(kind)
 }
