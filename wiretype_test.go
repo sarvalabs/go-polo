@@ -74,3 +74,22 @@ func TestWireType(t *testing.T) {
 		}
 	})
 }
+
+func TestIsWireType(t *testing.T) {
+	tests := []struct {
+		wire Any
+		is   WireType
+		not  WireType
+	}{
+		{nil, WireNull, WirePack},
+		{[]byte{}, WireNull, WireWord},
+		{[]byte{0}, WireNull, WireFloat},
+		{[]byte{6, 109, 97, 110, 105, 115, 104}, WireWord, WireFloat},
+		{[]byte{3, 1, 44}, WirePosInt, WireNegInt},
+	}
+
+	for _, test := range tests {
+		assert.True(t, IsWireType(test.wire, test.is))
+		assert.False(t, IsWireType(test.wire, test.not))
+	}
+}

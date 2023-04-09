@@ -95,3 +95,12 @@ func (wiretype WireType) IsValid() bool {
 func (wiretype WireType) IsCompound() bool {
 	return wiretype == WirePack || wiretype == WireDoc
 }
+
+// IsWireType returns whether the POLO data is of a certain wire type
+func IsWireType[T Raw | Any | []byte](wire T, kind WireType) bool {
+	if len(wire) == 0 {
+		return kind == WireNull
+	}
+
+	return wire[0]&15 == byte(kind)
+}
