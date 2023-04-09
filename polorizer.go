@@ -170,17 +170,37 @@ func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 	}
 }
 
-// PolorizeRaw encodes a Raw into the Polorizer.
-// Encodes the Raw directly with the wire type being WireRaw.
-// A nil Raw is encoded as WireNull.
+// PolorizeRaw encodes a Raw into the Polorizer. Encodes the Raw with the wire type being WireRaw.
+// No check is performed on the Raw wire, and is assumed to be a valid POLO Wire. A nil Raw = Raw{0}.
+// USE WITH CAUTION: Encoding unsupported wire formats, will lead to serialization failures
 func (polorizer *Polorizer) PolorizeRaw(value Raw) {
 	// If raw value is nil, encode WireNull
 	if value == nil {
-		polorizer.PolorizeNull()
-		return
+		value = Raw{0}
 	}
 
 	polorizer.wb.write(WireRaw, value)
+}
+
+// PolorizeAny encodes an Any into the Polorizer. Encodes the Any as its native type.
+// A nil Any is encodes as WireNull. Returns an error if the Any wire has an invalid wire tag.
+// USE WITH CAUTION: Encoding unsupported wire formats, will lead to serialization failures
+func (polorizer *Polorizer) PolorizeAny(value Any) error {
+	// If raw value is nil, encode WireNull
+	if value == nil {
+		polorizer.PolorizeNull()
+		return nil
+	}
+
+	// Convert the raw value into a readbuffer.
+	// This allows us to access the underlying wire type and data
+	rb, err := newreadbuffer(value)
+	if err != nil {
+		return err
+	}
+
+	polorizer.wb.write(rb.wire, rb.data)
+	return nil
 }
 
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.
@@ -404,6 +424,11 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		if value.IsNil() {
 			polorizer.PolorizeNull()
 			return nil
+		}
+
+		// Any Bytes
+		if value.Type() == reflect.TypeOf(Any{}) {
+			return polorizer.PolorizeAny(value.Bytes())
 		}
 
 		// Raw Bytes

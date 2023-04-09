@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ExamplePolorizer is an example for using the Polorizer to encode the fields of a Fruit object
@@ -178,8 +179,25 @@ func TestPolorizer_PolorizeRaw(t *testing.T) {
 	assert.Equal(t, []byte{14, 47, 5, 69, 6, 98, 111, 111, 0}, polorizer.Packed())
 
 	polorizer.PolorizeRaw(nil)
-	assert.Equal(t, []byte{14, 63, 5, 69, 80, 6, 98, 111, 111, 0}, polorizer.Bytes())
-	assert.Equal(t, []byte{14, 63, 5, 69, 80, 6, 98, 111, 111, 0}, polorizer.Packed())
+	assert.Equal(t, []byte{14, 63, 5, 69, 85, 6, 98, 111, 111, 0, 0}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 5, 69, 85, 6, 98, 111, 111, 0, 0}, polorizer.Packed())
+}
+
+func TestPolorizer_PolorizeAny(t *testing.T) {
+	polorizer := NewPolorizer()
+	require.EqualError(t, polorizer.PolorizeAny(Any{200}), "malformed tag: varint terminated prematurely")
+
+	require.NoError(t, polorizer.PolorizeAny(Any{6, 98, 111, 111}))
+	assert.Equal(t, []byte{6, 98, 111, 111}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 31, 6, 98, 111, 111}, polorizer.Packed())
+
+	require.NoError(t, polorizer.PolorizeAny(Any{0}))
+	assert.Equal(t, []byte{14, 47, 6, 48, 98, 111, 111}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 47, 6, 48, 98, 111, 111}, polorizer.Packed())
+
+	require.NoError(t, polorizer.PolorizeAny(nil))
+	assert.Equal(t, []byte{14, 63, 6, 48, 48, 98, 111, 111}, polorizer.Bytes())
+	assert.Equal(t, []byte{14, 63, 6, 48, 48, 98, 111, 111}, polorizer.Packed())
 }
 
 func TestPolorizer_PolorizeDocument(t *testing.T) {
