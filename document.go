@@ -163,19 +163,14 @@ func documentDecode(data readbuffer) (Document, error) {
 				return nil, err
 			}
 
-			// Read the next object from the pack
-			val, err := pack.read()
+			// Depolorize the next object from the pack into the Document val (raw)
+			docVal, err := pack.DepolorizeRaw()
 			if err != nil {
 				return nil, err
 			}
 
-			// Check that element is WireRaw
-			if val.wire != WireRaw {
-				return nil, IncompatibleWireType(val.wire, WireRaw)
-			}
-
 			// Set the value bytes into the document for the decoded key
-			doc.SetRaw(docKey, val.data)
+			doc.SetRaw(docKey, docVal)
 		}
 
 		return doc, nil

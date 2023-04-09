@@ -169,12 +169,12 @@ func ExampleCustomEncoding() {
 	// &{orange 300 [tangerine mandarin]}
 }
 
-// ExampleRawDecoding is an example for using the Raw type to capture
+// ExampleWireDecoding is an example for using the Any type to capture
 // the raw POLO encoded bytes for a specific field of the Fruit object.
-func ExampleRawDecoding() {
+func ExampleWireDecoding() {
 	// RawFruit is a struct that can capture the raw POLO bytes of each field
 	type RawFruit struct {
-		Name  Raw
+		Name  Any
 		Cost  int
 		Alias []string
 	}
@@ -221,7 +221,7 @@ func testObject[T any](t *testing.T, x T) {
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
 }
 
-func fuzzRaw(raw *Raw, c fuzz.Continue) {
+func fuzzAny(any *Any, c fuzz.Continue) {
 	polorizer := NewPolorizer()
 
 	for i := 0; i <= c.Intn(2); i++ {
@@ -245,7 +245,17 @@ func fuzzRaw(raw *Raw, c fuzz.Continue) {
 		}
 	}
 
-	*raw = polorizer.Bytes()
+	*any = polorizer.Bytes()
+}
+
+func fuzzRaw(raw *Raw, c fuzz.Continue) {
+	var anybytes Any
+	c.Fuzz(&anybytes)
+	if anybytes == nil {
+		anybytes = Any{0}
+	}
+
+	*raw = Raw(anybytes)
 }
 
 type IntegerObject struct {
@@ -793,14 +803,14 @@ func TestBig(t *testing.T) {
 	})
 }
 
-type RawObject struct {
-	A Raw
-	B Raw
-	C Raw
+type AnyObject struct {
+	A Any
+	B Any
+	C Any
 }
 
-func TestRaw(t *testing.T) {
-	f := fuzz.New().Funcs(fuzzRaw)
+func TestRawAny(t *testing.T) {
+	f := fuzz.New().Funcs(fuzzAny, fuzzRaw)
 
 	t.Run("Raw", func(t *testing.T) {
 		var x Raw
@@ -811,8 +821,8 @@ func TestRaw(t *testing.T) {
 		}
 	})
 
-	t.Run("RawObject", func(t *testing.T) {
-		var x RawObject
+	t.Run("Any Object", func(t *testing.T) {
+		var x AnyObject
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
@@ -820,7 +830,7 @@ func TestRaw(t *testing.T) {
 		}
 	})
 
-	t.Run("Raw Decode", func(t *testing.T) {
+	t.Run("Any Decode", func(t *testing.T) {
 		type Object struct {
 			A, B, C int
 		}
@@ -833,40 +843,22 @@ func TestRaw(t *testing.T) {
 			wire, err := Polorize(x)
 			require.Nil(t, err)
 
-			y := new(RawObject)
+			y := new(AnyObject)
 			err = Depolorize(y, wire)
 
 			require.Nil(t, err, "Unexpected Error. Input: %v", x)
 
 			wireA, _ := Polorize(x.A)
-			require.Equal(t, Raw(wireA), y.A)
+			require.Equal(t, Any(wireA), y.A)
 
 			wireB, _ := Polorize(x.B)
-			require.Equal(t, Raw(wireB), y.B)
+			require.Equal(t, Any(wireB), y.B)
 
 			wireC, _ := Polorize(x.C)
-			require.Equal(t, Raw(wireC), y.C)
+			require.Equal(t, Any(wireC), y.C)
 		}
 	})
-}
 
-func TestRaw_Is(t *testing.T) {
-	tests := []struct {
-		raw Raw
-		is  WireType
-		not WireType
-	}{
-		{nil, WireNull, WirePack},
-		{[]byte{}, WireNull, WireWord},
-		{[]byte{0}, WireNull, WireFloat},
-		{[]byte{6, 109, 97, 110, 105, 115, 104}, WireWord, WireFloat},
-		{[]byte{3, 1, 44}, WirePosInt, WireNegInt},
-	}
-
-	for _, test := range tests {
-		assert.True(t, test.raw.Is(test.is))
-		assert.False(t, test.raw.Is(test.not))
-	}
 }
 
 func TestDocument(t *testing.T) {
@@ -1113,13 +1105,18 @@ func TestNullWire(t *testing.T) {
 		assert.Equal(t, nilmap, *x)
 	})
 
+	t.Run("Any", func(t *testing.T) {
+		x := new(Any)
+		err = Depolorize(x, wire)
+
+		require.NoError(t, err)
+		require.Equal(t, Any{0}, *x)
+	})
+
 	t.Run("Raw", func(t *testing.T) {
 		x := new(Raw)
 		err = Depolorize(x, wire)
-
-		var nilraw Raw
-		require.Nil(t, err)
-		assert.Equal(t, nilraw, *x)
+		require.EqualError(t, err, "incompatible wire: unexpected wiretype 'null'. expected one of: {raw}")
 	})
 }
 

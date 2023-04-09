@@ -1,5 +1,13 @@
 package polo
 
+// Any is some raw POLO encoded data.
+// The data of Any can have any WireType
+type Any []byte
+
+// Raw is a container for raw POLO encoded data.
+// The data of Raw must have type WireRaw with its body being valid POLO data
+type Raw []byte
+
 // Polorizable is an interface for an object that serialize into a Polorizer
 type Polorizable interface {
 	Polorize() (*Polorizer, error)
@@ -40,16 +48,4 @@ func Depolorize(object any, data []byte) error {
 	}
 
 	return nil
-}
-
-// Raw is a container for raw POLO encoded data
-type Raw []byte
-
-// Is returns whether the raw POLO data is of a certain wire type
-func (raw Raw) Is(kind WireType) bool {
-	if len(raw) == 0 {
-		return kind == WireNull
-	}
-
-	return raw[0] == byte(kind)
 }

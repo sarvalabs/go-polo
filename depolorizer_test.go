@@ -136,6 +136,61 @@ func TestDepolorizer_DepolorizeNull(t *testing.T) {
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
+func TestDepolorizer_DepolorizeAny(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 79, 6, 54, 96, 101, 102, 111, 111, 98, 97, 114, 6, 102, 111, 111})
+	require.NoError(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.NoError(t, err)
+
+	wire, err := depolorizer.DepolorizeAny()
+	require.NoError(t, err)
+	require.Equal(t, wire, Any{6, 102, 111, 111})
+	require.False(t, depolorizer.Done())
+
+	wire, err = depolorizer.DepolorizeAny()
+	require.NoError(t, err)
+	require.Equal(t, wire, Any{6, 98, 97, 114})
+	require.False(t, depolorizer.Done())
+
+	wire, err = depolorizer.DepolorizeAny()
+	require.NoError(t, err)
+	require.Equal(t, wire, Any{0})
+	require.False(t, depolorizer.Done())
+
+	wire, err = depolorizer.DepolorizeAny()
+	require.NoError(t, err)
+	require.Equal(t, wire, Any{5, 6, 102, 111, 111})
+	require.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeAny()
+	require.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeRaw(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 63, 5, 64, 65, 6, 102, 111, 111})
+	require.NoError(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.NoError(t, err)
+
+	wire, err := depolorizer.DepolorizeRaw()
+	require.NoError(t, err)
+	require.Equal(t, wire, Raw{6, 102, 111, 111})
+	require.False(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeRaw()
+	require.EqualError(t, err, "incompatible wire: unexpected wiretype 'null'. expected one of: {raw}")
+	require.False(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeRaw()
+	require.EqualError(t, err, "incompatible wire: unexpected wiretype 'false'. expected one of: {raw}")
+	require.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeRaw()
+	require.EqualError(t, err, "insufficient data in wire for decode")
+}
+
 func TestDepolorizer_DepolorizeBool(t *testing.T) {
 	depolorizer, err := NewDepolorizer([]byte{14, 47, 2, 1})
 	require.Nil(t, err)
