@@ -19,6 +19,8 @@ var (
 	ErrNullPack = errors.New("null pack element")
 	// ErrObjectNotPtr is an error for when a non pointer object is passed to the Depolorize function
 	ErrObjectNotPtr = errors.New("object not a pointer")
+	// ErrObjectNotSettable is an error for when a non-settable pointer is passed to the Depolorize function
+	ErrObjectNotSettable = errors.New("object is not settable")
 	// ErrInsufficientWire is an error for when the data in depolorizer is exhausted
 	ErrInsufficientWire = errors.New("insufficient data in wire for decode")
 )

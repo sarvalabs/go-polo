@@ -1597,15 +1597,15 @@ func (object BadCustomObject) Polorize() (*Polorizer, error) {
 	return polorizer, nil
 }
 
-//func TestUnSettableValue(t *testing.T) {
-//	object := BoolObject{true, false}
-//	wire, err := Polorize(object)
-//	require.NoError(t, err)
-//
-//	var decoded *BoolObject
-//	err = Depolorize(decoded, wire)
-//	require.NoError(t, err)
-//}
+func TestUnSettableValue(t *testing.T) {
+	object := BoolObject{true, false}
+	wire, err := Polorize(object)
+	require.NoError(t, err)
+
+	var decoded *BoolObject
+	err = Depolorize(decoded, wire)
+	require.EqualError(t, err, "object is not settable")
+}
 
 func TestPointerAlias(t *testing.T) {
 	type (

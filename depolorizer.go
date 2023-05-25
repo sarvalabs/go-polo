@@ -83,7 +83,10 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 		return ErrObjectNotPtr
 	}
 
-	// todo: check that value is settable
+	// Check that the value is a settable pointer
+	if !value.Elem().CanSet() {
+		return ErrObjectNotSettable
+	}
 
 	// Obtain the type of the underlying type
 	target := value.Type().Elem()
