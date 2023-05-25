@@ -15,7 +15,7 @@ type Depolorizer struct {
 	done, packed bool
 
 	data readbuffer
-	load *loadreader
+	pack *packbuffer
 }
 
 // NewDepolorizer returns a new Depolorizer for some given bytes.
@@ -51,23 +51,23 @@ func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
 }
 
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
-// The readbuffer is converted into a loadreader and the returned Depolorizer is created in packed mode.
+// The readbuffer is converted into a packbuffer and the returned Depolorizer is created in packed mode.
 func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
-	// Convert the element into a loadreader
-	load, err := data.load()
+	// Convert the element into a packbuffer
+	pack, err := data.unpack()
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new Depolorizer in packed mode
-	return &Depolorizer{load: load, packed: true}, nil
+	return &Depolorizer{pack: pack, packed: true}, nil
 }
 
 // Done returns whether all elements in the Depolorizer have been read.
 func (depolorizer *Depolorizer) Done() bool {
-	// Check if loadreader is done if in packed mode
+	// Check if packbuffer is done if in packed mode
 	if depolorizer.packed {
-		return depolorizer.load.done()
+		return depolorizer.pack.done()
 	}
 
 	// Return flag for non-pack data
@@ -83,6 +83,8 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 	if value.Kind() != reflect.Pointer {
 		return ErrObjectNotPtr
 	}
+
+	// todo: check that value is settable
 
 	// Obtain the type of the underlying type
 	target := value.Type().Elem()
@@ -903,7 +905,7 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 }
 
 // read returns the next element in the Depolorizer as a readbuffer.
-// If it is in packed mode, it reads from the loadreader, otherwise
+// If it is in packed mode, it reads from the packbuffer, otherwise
 // it returns the readbuffer data and set the done flag.
 func (depolorizer *Depolorizer) read() (readbuffer, error) {
 	// Check if there is another element to read
@@ -911,9 +913,9 @@ func (depolorizer *Depolorizer) read() (readbuffer, error) {
 		return readbuffer{}, ErrInsufficientWire
 	}
 
-	// Read from the loadreader if in packed mode
+	// Read from the packbuffer if in packed mode
 	if depolorizer.packed {
-		return depolorizer.load.next()
+		return depolorizer.pack.next()
 	}
 
 	// Set the atomic read flag to done

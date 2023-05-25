@@ -84,7 +84,7 @@ func TestNewDepolorizer(t *testing.T) {
 		},
 		{
 			[]byte{14, 47, 3, 35, 1, 44, 250}, true, "",
-			&Depolorizer{packed: true, load: newloadreader([]byte{3, 35}, []byte{1, 44, 250})},
+			&Depolorizer{packed: true, pack: newpackbuffer([]byte{3, 35}, []byte{1, 44, 250})},
 		},
 
 		{[]byte{175}, true, "incompatible wire: malformed tag: varint terminated prematurely", nil},
