@@ -2,8 +2,11 @@ package polo
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 )
 
 // readbuffer is a read-only buffer that is obtained from a single tag and its body.
@@ -73,4 +76,258 @@ func (rb *readbuffer) unpack() (*packbuffer, error) {
 	lr := newpackbuffer(head, body)
 
 	return lr, nil
+}
+
+func (rb readbuffer) asAny() Any {
+	if rb.wire == WireNull {
+		return Any{0}
+	}
+
+	return rb.bytes()
+}
+
+func (rb readbuffer) asRaw() (Raw, error) {
+	if rb.wire != WireRaw {
+		return nil, IncompatibleWireType(rb.wire, WireRaw)
+	}
+
+	return rb.data, nil
+}
+
+func (rb readbuffer) decodeBool() (bool, error) {
+	switch rb.wire {
+	// True Value
+	case WireTrue:
+		return true, nil
+	// False Value
+	case WireFalse:
+		return false, nil
+	// Default Value
+	case WireNull:
+		return false, nilValue
+	default:
+		return false, IncompatibleWireType(rb.wire, WireNull, WireTrue, WireFalse)
+	}
+}
+
+func (rb readbuffer) decodeBytes() ([]byte, error) {
+	switch rb.wire {
+	case WireWord:
+		return rb.data, nil
+	// Nil Byte Slice (Default)
+	case WireNull:
+		return nil, nilValue
+	default:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WireWord)
+	}
+}
+
+func (rb readbuffer) decodeString() (string, error) {
+	switch rb.wire {
+	// Convert []byte to string
+	case WireWord:
+		return string(rb.data), nil
+	// Empty String (Default)
+	case WireNull:
+		return "", nilValue
+	default:
+		return "", IncompatibleWireType(rb.wire, WireNull, WireWord)
+	}
+}
+
+func (rb readbuffer) decodeUint64() (uint64, error) {
+	// Check that the data does not overflow for 64-bits
+	if len(rb.data) > 8 {
+		return 0, IncompatibleValueError{"excess data for 64-bit integer"}
+	}
+
+	switch rb.wire {
+	case WirePosInt:
+		// Decode the data into a uint64
+		number := binary.BigEndian.Uint64(append(make([]byte, 8-len(rb.data), 8), rb.data...))
+
+		return number, nil
+
+	case WireNull:
+		return 0, nilValue
+	default:
+		return 0, IncompatibleWireType(rb.wire, WireNull, WirePosInt)
+	}
+}
+
+func (rb readbuffer) decodeUint32() (uint32, error) {
+	// Check that the data does not overflow for 32-bits
+	if len(rb.data) > 4 {
+		return 0, IncompatibleValueError{"excess data for 32-bit integer"}
+	}
+
+	decoded, err := rb.decodeUint64()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint32(decoded), nil
+}
+
+func (rb readbuffer) decodeUint16() (uint16, error) {
+	// Check that the data does not overflow for 16-bits
+	if len(rb.data) > 2 {
+		return 0, IncompatibleValueError{"excess data for 16-bit integer"}
+	}
+
+	decoded, err := rb.decodeUint64()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint16(decoded), nil
+}
+
+func (rb readbuffer) decodeUint8() (uint8, error) {
+	// Check that the data does not overflow for 8-bits
+	if len(rb.data) > 1 {
+		return 0, IncompatibleValueError{"excess data for 8-bit integer"}
+	}
+
+	decoded, err := rb.decodeUint64()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint8(decoded), nil
+}
+
+func (rb readbuffer) decodeInt64() (decoded int64, err error) {
+	// Check that the data does not overflow for bit-size
+	if len(rb.data) > 8 {
+		return 0, IncompatibleValueError{"excess data for 64-bit integer"}
+	}
+
+	switch rb.wire {
+	case WireNegInt:
+		// If the negative, defer the sign flip of the decoded value
+		defer func() { decoded = -decoded }()
+
+		fallthrough
+
+	case WirePosInt:
+		// Decode the data into a uint64
+		number := binary.BigEndian.Uint64(append(make([]byte, 8-len(rb.data), 8), rb.data...))
+
+		// Check that number is within bounds for int64
+		if number > math.MaxInt64 {
+			return 0, IncompatibleValueError{"overflow for signed integer"}
+		}
+
+		// Convert to int64 and return
+		return int64(number), nil
+
+	case WireNull:
+		return 0, nilValue
+	default:
+		return 0, IncompatibleWireType(rb.wire, WireNull, WirePosInt, WireNegInt)
+	}
+}
+
+func (rb readbuffer) decodeInt32() (int32, error) {
+	// Check that the data does not overflow for 32-bits
+	if len(rb.data) > 4 {
+		return 0, IncompatibleValueError{"excess data for 32-bit integer"}
+	}
+
+	decoded, err := rb.decodeInt64()
+	if err != nil {
+		return 0, err
+	}
+
+	return int32(decoded), nil
+}
+
+func (rb readbuffer) decodeInt16() (int16, error) {
+	// Check that the data does not overflow for 16-bits
+	if len(rb.data) > 2 {
+		return 0, IncompatibleValueError{"excess data for 16-bit integer"}
+	}
+
+	decoded, err := rb.decodeInt64()
+	if err != nil {
+		return 0, err
+	}
+
+	return int16(decoded), nil
+}
+
+func (rb readbuffer) decodeInt8() (int8, error) {
+	// Check that the data does not overflow for 8-bits
+	if len(rb.data) > 1 {
+		return 0, IncompatibleValueError{"excess data for 8-bit integer"}
+	}
+
+	decoded, err := rb.decodeInt64()
+	if err != nil {
+		return 0, err
+	}
+
+	return int8(decoded), nil
+}
+
+func (rb readbuffer) decodeFloat32() (float32, error) {
+	switch rb.wire {
+	case WireFloat:
+		if len(rb.data) != 4 {
+			return 0, IncompatibleWireError{"malformed data for 32-bit float"}
+		}
+
+		// Convert float from IEEE754 binary representation (single point)
+		float := math.Float32frombits(binary.BigEndian.Uint32(rb.data))
+		if math.IsNaN(float64(float)) {
+			return 0, IncompatibleValueError{"float is not a number"}
+		}
+
+		return float, nil
+
+	// 0 (Default)
+	case WireNull:
+		return 0, nilValue
+	default:
+		return 0, IncompatibleWireType(rb.wire, WireNull, WireFloat)
+	}
+}
+
+func (rb readbuffer) decodeFloat64() (float64, error) {
+	switch rb.wire {
+	case WireFloat:
+		if len(rb.data) != 8 {
+			return 0, IncompatibleWireError{"malformed data for 64-bit float"}
+		}
+
+		// Convert float from IEEE754 binary representation (double point)
+		float := math.Float64frombits(binary.BigEndian.Uint64(rb.data))
+		if math.IsNaN(float) {
+			return 0, IncompatibleValueError{"float is not a number"}
+		}
+
+		return float, nil
+
+	// 0 (Default)
+	case WireNull:
+		return 0, nilValue
+	default:
+		return 0, IncompatibleWireType(rb.wire, WireNull, WireFloat)
+	}
+}
+
+func (rb readbuffer) decodeBigInt() (*big.Int, error) {
+	switch rb.wire {
+	case WirePosInt:
+		return new(big.Int).SetBytes(rb.data), nil
+	case WireNegInt:
+		return new(big.Int).Neg(new(big.Int).SetBytes(rb.data)), nil
+
+	// Nil big.Int
+	case WireNull:
+		return nil, nilValue
+	default:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WirePosInt, WireNegInt)
+	}
 }

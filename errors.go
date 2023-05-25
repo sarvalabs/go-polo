@@ -11,6 +11,9 @@ var (
 	// zeroVal represents the zero value of reflect.Value.
 	// It acts as a marker for encoding/decoding nil values.
 	zeroVal = reflect.ValueOf(nil)
+	// nilValue is an error for when a WireNull is encountered during reflective decoding.
+	// It acts a signal for error and value handlers.
+	nilValue = errors.New("nil value")
 
 	// ErrNullPack is an error for when a WireNull is attempted to be converted to a Depolorizer
 	ErrNullPack = errors.New("null pack element")
