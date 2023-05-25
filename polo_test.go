@@ -269,6 +269,10 @@ type IntegerObject struct {
 	H uint16
 	I uint32
 	J uint64
+	K *uint16
+	L *int32
+	M *int16
+	N *int8
 }
 
 func TestInteger(t *testing.T) {
@@ -295,7 +299,7 @@ func TestInteger(t *testing.T) {
 	t.Run("Int8", func(t *testing.T) {
 		var x int8
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -304,7 +308,7 @@ func TestInteger(t *testing.T) {
 	t.Run("Uint8", func(t *testing.T) {
 		var x uint8
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -415,7 +419,7 @@ func TestWord(t *testing.T) {
 	t.Run("String", func(t *testing.T) {
 		var x string
 
-		for i := 0; i < 10000; i++ {
+		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -424,7 +428,7 @@ func TestWord(t *testing.T) {
 	t.Run("Bytes", func(t *testing.T) {
 		var x []byte
 
-		for i := 0; i < 10000; i++ {
+		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -445,6 +449,8 @@ type FloatObject struct {
 	B float32
 	C float64
 	D float64
+	E *float32
+	F *float64
 }
 
 func TestFloat(t *testing.T) {
@@ -505,15 +511,17 @@ type SequenceObject struct {
 	I [2]map[uint64]bool
 	J [4][4]float32
 	K [6]IntegerObject
+	L [2][]*uint32
+	M [][10]*string
 }
 
 func TestSequence(t *testing.T) {
-	f := fuzz.New().NumElements(0, 8)
+	f := fuzz.New().NumElements(0, 8).NilChance(0.3)
 
 	t.Run("String Slice", func(t *testing.T) {
 		var x []string
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -522,7 +530,7 @@ func TestSequence(t *testing.T) {
 	t.Run("Uint64 Slice", func(t *testing.T) {
 		var x []uint64
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -531,7 +539,7 @@ func TestSequence(t *testing.T) {
 	t.Run("Map Slice", func(t *testing.T) {
 		var x []map[string]string
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -540,7 +548,7 @@ func TestSequence(t *testing.T) {
 	t.Run("Double String Slice", func(t *testing.T) {
 		var x [][]string
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
 			testObject(t, x)
 		}
@@ -657,6 +665,7 @@ type MapObject struct {
 	H map[[2]int]int
 	I map[[4]float32]uint64
 	J map[[2][2]string]string
+	K map[string]*string
 }
 
 func TestMapping(t *testing.T) {
@@ -707,6 +716,15 @@ func TestMapping(t *testing.T) {
 		}
 	})
 
+	t.Run("Pointer Map", func(t *testing.T) {
+		var x map[string]*uint8
+
+		for i := 0; i < 10000; i++ {
+			f.Fuzz(&x)
+			testObject(t, x)
+		}
+	})
+
 	t.Run("Array Keyed Map", func(t *testing.T) {
 		var err error
 
@@ -734,6 +752,8 @@ type PointerObject struct {
 	A *WordObject
 	B *IntegerObject
 	C *FloatObject
+	D *string
+	E *uint8
 }
 
 func TestPointer(t *testing.T) {
@@ -1575,4 +1595,29 @@ func (object BadCustomObject) Polorize() (*Polorizer, error) {
 	}
 
 	return polorizer, nil
+}
+
+func TestUnSettableValue(t *testing.T) {
+	object := BoolObject{true, false}
+	wire, err := Polorize(object)
+	require.NoError(t, err)
+
+	var decoded *BoolObject
+	err = Depolorize(decoded, wire)
+	require.EqualError(t, err, "object is not settable")
+}
+
+func TestPointerAlias(t *testing.T) {
+	type (
+		Alias1 string
+		Alias2 uint16
+	)
+
+	type Object struct {
+		A *Alias1
+		B *Alias2
+	}
+
+	object := Object{nil, nil}
+	testObject(t, object)
 }

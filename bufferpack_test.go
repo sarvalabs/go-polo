@@ -7,7 +7,6 @@ import (
 )
 
 func TestReadbuffer(t *testing.T) {
-
 	tests := []struct {
 		data []byte
 		tag  int
@@ -24,7 +23,7 @@ func TestReadbuffer(t *testing.T) {
 		assert.Equal(t, test.data[test.tag:], rb.data)
 		assert.Equal(t, test.wire, rb.wire)
 
-		if _, err = rb.load(); test.load {
+		if _, err = rb.unpack(); test.load {
 			assert.Nil(t, err)
 		} else {
 			assert.NotNil(t, err)
@@ -33,7 +32,7 @@ func TestReadbuffer(t *testing.T) {
 }
 
 func TestLoadReader(t *testing.T) {
-	load := newloadreader(
+	load := newpackbuffer(
 		[]byte{6, 51, 86},
 		[]byte{112, 98, 98, 1, 44, 112, 98, 98},
 	)

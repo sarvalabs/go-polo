@@ -1,9 +1,8 @@
 package polo
 
 import (
-	"encoding/binary"
+	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"reflect"
 )
@@ -15,7 +14,7 @@ type Depolorizer struct {
 	done, packed bool
 
 	data readbuffer
-	load *loadreader
+	pack *packbuffer
 }
 
 // NewDepolorizer returns a new Depolorizer for some given bytes.
@@ -51,23 +50,23 @@ func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
 }
 
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
-// The readbuffer is converted into a loadreader and the returned Depolorizer is created in packed mode.
+// The readbuffer is converted into a packbuffer and the returned Depolorizer is created in packed mode.
 func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
-	// Convert the element into a loadreader
-	load, err := data.load()
+	// Convert the element into a packbuffer
+	pack, err := data.unpack()
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a new Depolorizer in packed mode
-	return &Depolorizer{load: load, packed: true}, nil
+	return &Depolorizer{pack: pack, packed: true}, nil
 }
 
 // Done returns whether all elements in the Depolorizer have been read.
 func (depolorizer *Depolorizer) Done() bool {
-	// Check if loadreader is done if in packed mode
+	// Check if packbuffer is done if in packed mode
 	if depolorizer.packed {
-		return depolorizer.load.done()
+		return depolorizer.pack.done()
 	}
 
 	// Return flag for non-pack data
@@ -84,13 +83,23 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 		return ErrObjectNotPtr
 	}
 
+	// Check that the value is a settable pointer
+	if !value.Elem().CanSet() {
+		return ErrObjectNotSettable
+	}
+
 	// Obtain the type of the underlying type
 	target := value.Type().Elem()
 	// Depolorize the next element to the target type
 	result, err := depolorizer.depolorizeValue(target)
-	if err != nil {
+
+	// Handle Errors or Nils
+	switch {
+	case err != nil && errors.Is(err, nilValue):
+		return nil
+	case err != nil:
 		return err
-	} else if result == zeroVal {
+	case result == zeroVal:
 		return nil
 	}
 
@@ -116,6 +125,14 @@ func (depolorizer *Depolorizer) DepolorizeNull() error {
 	return nil
 }
 
+func allowNilValue[V any](value V, err error) (V, error) {
+	if errors.Is(err, nilValue) {
+		return value, nil
+	}
+
+	return value, err
+}
+
 // DepolorizeBytes attempts to decode a bytes value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WireWord.
 // Returns a nil byte slice if the element is a WireNull.
@@ -126,17 +143,7 @@ func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 		return nil, err
 	}
 
-	switch data.wire {
-	case WireWord:
-		return data.data, nil
-
-	// Nil Byte Slice (Default)
-	case WireNull:
-		return nil, nil
-
-	default:
-		return nil, IncompatibleWireType(data.wire, WireNull, WireWord)
-	}
+	return allowNilValue(data.decodeBytes())
 }
 
 // DepolorizeString attempts to decode a string value from the Depolorizer, consuming one wire element.
@@ -149,18 +156,7 @@ func (depolorizer *Depolorizer) DepolorizeString() (string, error) {
 		return "", err
 	}
 
-	switch data.wire {
-	// Convert []byte to string
-	case WireWord:
-		return string(data.data), nil
-
-	// Empty String (Default)
-	case WireNull:
-		return "", nil
-
-	default:
-		return "", IncompatibleWireType(data.wire, WireNull, WireWord)
-	}
+	return allowNilValue(data.decodeString())
 }
 
 // DepolorizeBool attempts to decode a bool value from the Depolorizer, consuming one wire element.
@@ -173,46 +169,33 @@ func (depolorizer *Depolorizer) DepolorizeBool() (bool, error) {
 		return false, err
 	}
 
-	switch data.wire {
-	// True Value
-	case WireTrue:
-		return true, nil
-
-	// False Value (Default)
-	case WireFalse, WireNull:
-		return false, nil
-
-	default:
-		return false, IncompatibleWireType(data.wire, WireNull, WireTrue, WireFalse)
-	}
+	return allowNilValue(data.decodeBool())
 }
 
 // DepolorizeUint attempts to decode an unsigned integer value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WirePosInt.
 // Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeUint() (uint64, error) {
-	// Depolorize an unsigned 64-bit integer
-	number, err := depolorizer.depolorizeInteger(false, 64)
+	// Read the next element
+	data, err := depolorizer.read()
 	if err != nil {
 		return 0, err
 	}
 
-	// Return the integer as an uint64
-	return number.(uint64), nil
+	return allowNilValue(data.decodeUint64())
 }
 
 // DepolorizeInt attempts to decode a signed integer value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
 // Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeInt() (int64, error) {
-	// Depolorize a signed 64-bit integer
-	number, err := depolorizer.depolorizeInteger(true, 64)
+	// Read the next element
+	data, err := depolorizer.read()
 	if err != nil {
 		return 0, err
 	}
 
-	// Return the integer as an int64
-	return number.(int64), nil
+	return allowNilValue(data.decodeInt64())
 }
 
 // DepolorizeFloat32 attempts to decode a single point precision float from the Depolorizer, consuming one wire element.
@@ -225,27 +208,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat32() (float32, error) {
 		return 0, err
 	}
 
-	switch data.wire {
-	case WireFloat:
-		if len(data.data) != 4 {
-			return 0, IncompatibleWireError{"malformed data for 32-bit float"}
-		}
-
-		// Convert float from IEEE754 binary representation (single point)
-		float := math.Float32frombits(binary.BigEndian.Uint32(data.data))
-		if math.IsNaN(float64(float)) {
-			return 0, IncompatibleValueError{"float is not a number"}
-		}
-
-		return float, nil
-
-	// 0 (Default)
-	case WireNull:
-		return 0, nil
-
-	default:
-		return 0, IncompatibleWireType(data.wire, WireNull, WireFloat)
-	}
+	return allowNilValue(data.decodeFloat32())
 }
 
 // DepolorizeFloat64 attempts to decode a double point precision float from the Depolorizer, consuming one wire element.
@@ -258,27 +221,7 @@ func (depolorizer *Depolorizer) DepolorizeFloat64() (float64, error) {
 		return 0, err
 	}
 
-	switch data.wire {
-	case WireFloat:
-		if len(data.data) != 8 {
-			return 0, IncompatibleWireError{"malformed data for 64-bit float"}
-		}
-
-		// Convert float from IEEE754 binary representation (double point)
-		float := math.Float64frombits(binary.BigEndian.Uint64(data.data))
-		if math.IsNaN(float) {
-			return 0, IncompatibleValueError{"float is not a number"}
-		}
-
-		return float, nil
-
-	// 0 (Default)
-	case WireNull:
-		return 0, nil
-
-	default:
-		return 0, IncompatibleWireType(data.wire, WireNull, WireFloat)
-	}
+	return allowNilValue(data.decodeFloat64())
 }
 
 // DepolorizeBigInt attempts to decode a big.Int from the Depolorizer, consuming one wire element.
@@ -291,20 +234,7 @@ func (depolorizer *Depolorizer) DepolorizeBigInt() (*big.Int, error) {
 		return nil, err
 	}
 
-	switch data.wire {
-	case WirePosInt:
-		return new(big.Int).SetBytes(data.data), nil
-
-	case WireNegInt:
-		return new(big.Int).Neg(new(big.Int).SetBytes(data.data)), nil
-
-	// Nil big.Int
-	case WireNull:
-		return nil, nil
-
-	default:
-		return nil, IncompatibleWireType(data.wire, WireNull, WirePosInt, WireNegInt)
-	}
+	return allowNilValue(data.decodeBigInt())
 }
 
 // DepolorizeDocument attempts to decode a Document from the Depolorizer, consuming one wire element.
@@ -330,12 +260,7 @@ func (depolorizer *Depolorizer) DepolorizeAny() (Any, error) {
 		return nil, err
 	}
 
-	switch data.wire {
-	case WireNull:
-		return Any{0}, nil
-	default:
-		return data.bytes(), nil
-	}
+	return data.asAny(), nil
 }
 
 // DepolorizeRaw attempts to decode a Raw from the Depolorizer, consuming one wire element.
@@ -347,11 +272,7 @@ func (depolorizer *Depolorizer) DepolorizeRaw() (Raw, error) {
 		return nil, err
 	}
 
-	if data.wire != WireRaw {
-		return nil, IncompatibleWireType(data.wire, WireRaw)
-	}
-
-	return data.data, nil
+	return data.asRaw()
 }
 
 // DepolorizePacked attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
@@ -388,72 +309,6 @@ func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
 
 	// Create a non-pack Depolorizer
 	return &Depolorizer{data: data}, nil
-}
-
-// depolorizeInteger attempts to decode an integer from the Depolorizer, consuming one wire element.
-// Accepts whether the integer should be signed and its bit-size (8, 16, 32 or 64)
-func (depolorizer *Depolorizer) depolorizeInteger(signed bool, size int) (any, error) {
-	// Read the next element
-	data, err := depolorizer.read()
-	if err != nil {
-		return nil, err
-	}
-
-	if data.wire == WireNull {
-		// if number is signed
-		if signed {
-			return int64(0), nil
-		} else {
-			return uint64(0), nil
-		}
-	}
-
-	// Check that wire is either WirePosInt, WireNegInt
-	if !(data.wire == WirePosInt || data.wire == WireNegInt) {
-		expects := []WireType{WireNull, WirePosInt}
-		if signed {
-			expects = append(expects, WireNegInt)
-		}
-
-		return 0, IncompatibleWireType(data.wire, expects...)
-	}
-
-	// Check that bit-size value is valid
-	if !isBitSize(size) {
-		panic("invalid bit-size for integer decode")
-	}
-
-	// Check that the data does not overflow for bit-size
-	if len(data.data) > size/8 {
-		return 0, IncompatibleValueError{fmt.Sprintf("excess data for %v-bit integer", size)}
-	}
-
-	// Decode the data into a uint64
-	number := binary.BigEndian.Uint64(append(make([]byte, 8-len(data.data), 8), data.data...))
-	if signed {
-		// Check that number is within bounds for signed integer
-		if number > math.MaxInt64 {
-			return 0, IncompatibleValueError{"overflow for signed integer"}
-		}
-	}
-
-	switch data.wire {
-	case WirePosInt: // do nothing
-	case WireNegInt:
-		if !signed {
-			return 0, IncompatibleWireType(data.wire, WireNull, WirePosInt)
-		}
-
-		// Flip polarity if negative integer
-		return -int64(number), nil
-	}
-
-	// if number is signed
-	if signed {
-		return int64(number), nil
-	}
-
-	return number, nil
 }
 
 // depolorizeByteArrayValue accepts a reflect.Type and decodes a byte array from the Depolorizer.
@@ -760,18 +615,19 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 func (depolorizer *Depolorizer) depolorizePointer(target reflect.Type) (reflect.Value, error) {
 	// recursively call depolorize with the pointer element
 	value, err := depolorizer.depolorizeValue(target.Elem())
-	if err != nil {
-		return zeroVal, err
-	}
 
-	// Handle ZeroVal
-	if value == zeroVal {
+	switch {
+	case err != nil && errors.Is(err, nilValue):
+		return zeroVal, nil
+	case err != nil:
+		return zeroVal, err
+	case value == zeroVal:
 		return zeroVal, nil
 	}
 
 	// Create a new pointer value and set its inner value and return it
 	p := reflect.New(target.Elem())
-	p.Elem().Set(value)
+	p.Elem().Set(value.Convert(p.Elem().Type()))
 
 	return p, nil
 }
@@ -813,37 +669,123 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 
 	// Boolean Value
 	case reflect.Bool:
-		return reflected(depolorizer.DepolorizeBool())
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeBool())
 
 	// String Value
 	case reflect.String:
-		return reflected(depolorizer.DepolorizeString())
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
 
-	// Integer Value
+		return reflected(data.decodeString())
+
+	// Uint8 Value
 	case reflect.Uint8:
-		return reflected(depolorizer.depolorizeInteger(false, 8))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeUint8())
+
+	// Int8 Value
 	case reflect.Int8:
-		return reflected(depolorizer.depolorizeInteger(true, 8))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeInt8())
+
+	// Uint16 Value
 	case reflect.Uint16:
-		return reflected(depolorizer.depolorizeInteger(false, 16))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeUint16())
+
+	// Int16 Value
 	case reflect.Int16:
-		return reflected(depolorizer.depolorizeInteger(true, 16))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeInt16())
+
+	// Uint32 Value
 	case reflect.Uint32:
-		return reflected(depolorizer.depolorizeInteger(false, 32))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeUint32())
+
+	// Int32 Value
 	case reflect.Int32:
-		return reflected(depolorizer.depolorizeInteger(true, 32))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeInt32())
+
+	// Uint64 Value
 	case reflect.Uint, reflect.Uint64:
-		return reflected(depolorizer.depolorizeInteger(false, 64))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeUint64())
+
+	// Int64 Value
 	case reflect.Int, reflect.Int64:
-		return reflected(depolorizer.depolorizeInteger(true, 64))
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeInt64())
 
 	// Single Point Float
 	case reflect.Float32:
-		return reflected(depolorizer.DepolorizeFloat32())
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeFloat32())
 
 	// Double Point Float
 	case reflect.Float64:
-		return reflected(depolorizer.DepolorizeFloat64())
+		// Read the next element
+		data, err := depolorizer.read()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		return reflected(data.decodeFloat64())
 
 	// Slice Value
 	case reflect.Slice:
@@ -903,7 +845,7 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 }
 
 // read returns the next element in the Depolorizer as a readbuffer.
-// If it is in packed mode, it reads from the loadreader, otherwise
+// If it is in packed mode, it reads from the packbuffer, otherwise
 // it returns the readbuffer data and set the done flag.
 func (depolorizer *Depolorizer) read() (readbuffer, error) {
 	// Check if there is another element to read
@@ -911,9 +853,9 @@ func (depolorizer *Depolorizer) read() (readbuffer, error) {
 		return readbuffer{}, ErrInsufficientWire
 	}
 
-	// Read from the loadreader if in packed mode
+	// Read from the packbuffer if in packed mode
 	if depolorizer.packed {
-		return depolorizer.load.next()
+		return depolorizer.pack.next()
 	}
 
 	// Set the atomic read flag to done

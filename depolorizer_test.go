@@ -84,7 +84,7 @@ func TestNewDepolorizer(t *testing.T) {
 		},
 		{
 			[]byte{14, 47, 3, 35, 1, 44, 250}, true, "",
-			&Depolorizer{packed: true, load: newloadreader([]byte{3, 35}, []byte{1, 44, 250})},
+			&Depolorizer{packed: true, pack: newpackbuffer([]byte{3, 35}, []byte{1, 44, 250})},
 		},
 
 		{[]byte{175}, true, "incompatible wire: malformed tag: varint terminated prematurely", nil},
@@ -198,13 +198,20 @@ func TestDepolorizer_DepolorizeBool(t *testing.T) {
 	depolorizer, err = depolorizer.DepolorizePacked()
 	require.Nil(t, err)
 
-	_, err = depolorizer.DepolorizeBool()
+	var value bool
+
+	value, err = depolorizer.DepolorizeBool()
 	assert.Nil(t, err)
+	assert.Equal(t, true, value)
 	assert.False(t, depolorizer.Done())
 
-	_, err = depolorizer.DepolorizeBool()
+	value, err = depolorizer.DepolorizeBool()
 	assert.Nil(t, err)
+	assert.Equal(t, false, value)
 	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeBool()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
 func TestDepolorizer_DepolorizeString(t *testing.T) {
@@ -299,6 +306,9 @@ func TestDepolorizer_DepolorizeFloat32(t *testing.T) {
 	_, err = depolorizer.DepolorizeFloat32()
 	assert.Nil(t, err)
 	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeFloat32()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
 func TestDepolorizer_DepolorizeFloat64(t *testing.T) {
@@ -315,6 +325,9 @@ func TestDepolorizer_DepolorizeFloat64(t *testing.T) {
 	_, err = depolorizer.DepolorizeFloat64()
 	assert.Nil(t, err)
 	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeFloat64()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
 func TestDepolorizer_DepolorizeBigInt(t *testing.T) {
@@ -418,18 +431,6 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 	})
 }
 
-func TestDepolorizer_depolorizeInteger(t *testing.T) {
-	depolorizer, err := NewDepolorizer([]byte{14, 31, 4, 131})
-	require.Nil(t, err)
-
-	depolorizer, err = depolorizer.DepolorizePacked()
-	require.Nil(t, err)
-
-	assert.PanicsWithValue(t, "invalid bit-size for integer decode", func() {
-		_, _ = depolorizer.depolorizeInteger(false, 60)
-	})
-}
-
 func TestDepolorizer_ZeroValue(t *testing.T) {
 	type Object struct {
 		A string
@@ -478,7 +479,13 @@ func TestInsufficientWire(t *testing.T) {
 		{&Depolorizer{data: readbuffer{}, done: true}, new([]byte)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(string)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(uint64)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(uint32)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(uint16)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(uint8)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(int64)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(int32)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(int16)},
+		{&Depolorizer{data: readbuffer{}, done: true}, new(int8)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(float32)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(float64)},
 		{&Depolorizer{data: readbuffer{}, done: true}, new(big.Int)},

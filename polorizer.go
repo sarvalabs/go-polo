@@ -83,11 +83,6 @@ func (polorizer *Polorizer) PolorizeBool(value bool) {
 // PolorizeUint encodes a signed integer value into the Polorizer.
 // Encodes the integer as it's the binary form (big-endian) with the wire type being WirePosInt.
 func (polorizer *Polorizer) PolorizeUint(value uint64) {
-	if value == 0 {
-		polorizer.PolorizeNull()
-		return
-	}
-
 	var buffer [8]byte
 
 	binary.BigEndian.PutUint64(buffer[:], value)
@@ -98,11 +93,6 @@ func (polorizer *Polorizer) PolorizeUint(value uint64) {
 // Encodes the integer as the binary form of its absolute value with the wire type
 // being WirePosInt or WireBigInt based on polarity, with zero considered as positive.
 func (polorizer *Polorizer) PolorizeInt(value int64) {
-	if value == 0 {
-		polorizer.PolorizeNull()
-		return
-	}
-
 	var (
 		buffer   [8]byte
 		unsigned uint64
@@ -124,11 +114,6 @@ func (polorizer *Polorizer) PolorizeInt(value int64) {
 // PolorizeFloat32 encodes a single point precision float into the Polorizer.
 // Encodes the float as its IEEE754 binary form (big-endian) with the wire type being WireFloat.
 func (polorizer *Polorizer) PolorizeFloat32(value float32) {
-	if value == 0 {
-		polorizer.PolorizeNull()
-		return
-	}
-
 	var buffer [4]byte
 
 	// Convert float into IEEE754 binary representation (single point)
@@ -139,11 +124,6 @@ func (polorizer *Polorizer) PolorizeFloat32(value float32) {
 // PolorizeFloat64 encodes a double point precision float into the Polorizer.
 // Encodes the float as its IEEE754 binary form (big-endian) with the wire type being WireFloat.
 func (polorizer *Polorizer) PolorizeFloat64(value float64) {
-	if value == 0 {
-		polorizer.PolorizeNull()
-		return
-	}
-
 	var buffer [8]byte
 
 	// Convert float into IEEE754 binary representation (double point)
