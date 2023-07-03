@@ -1,5 +1,20 @@
 ![image](./banner.png)
 
+[godoclink]: https://godoc.org/github.com/sarvalabs/go-polo
+[latestrelease]: https://github.com/sarvalabs/go-polo/releases/latest
+[issueslink]: https://github.com/sarvalabs/go-polo/issues
+[pullslink]: https://github.com/sarvalabs/go-polo/pulls
+
+![go version](https://img.shields.io/github/go-mod/go-version/sarvalabs/go-polo?style=for-the-badge)
+![license](https://img.shields.io/badge/license-MIT%2FApache--2.0-informational?style=for-the-badge)
+[![go docs](http://img.shields.io/badge/go-documentation-blue.svg?style=for-the-badge)][godoclink]
+[![latest tag](https://img.shields.io/github/v/tag/sarvalabs/go-polo?color=blue&label=latest%20tag&sort=semver&style=for-the-badge)][latestrelease]
+
+[![issue count](https://img.shields.io/github/issues/sarvalabs/go-polo?style=for-the-badge&color=yellow)][issueslink]
+[![pulls count](https://img.shields.io/github/issues-pr/sarvalabs/go-polo?style=for-the-badge&color=brightgreen)][pullslink]
+![test status](https://img.shields.io/github/actions/workflow/status/sarvalabs/go-polo/testing.yml?label=tests&style=for-the-badge)
+
+
 # go-polo
 **go-polo** is a Go implementation of the POLO Encoding and Object Serialization Scheme. [**POLO**](https://github.com/sarvalabs/polo) stands for ***Prefix Ordered Lookup Offsets***. 
 
