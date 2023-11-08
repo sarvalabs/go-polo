@@ -11,18 +11,27 @@ import (
 // Polorizer is an encoding buffer that can sequentially polorize objects into it.
 // It can be collapsed into its bytes with Bytes() or Packed().
 type Polorizer struct {
-	wb *writebuffer
+	wb  *writebuffer
+	cfg wireConfig
 }
 
-// NewPolorizer creates a new Polorizer
-func NewPolorizer() *Polorizer {
-	return &Polorizer{wb: &writebuffer{}}
+// NewPolorizer creates a new Polorizer.
+// Accepts EncodingOptions to modify the encoding behaviour of the Polorizer
+func NewPolorizer(options ...EncodingOptions) *Polorizer {
+	// Generate a default wire config
+	config := defaultWireConfig()
+	// Apply any given options to the config
+	for _, opt := range options {
+		opt(config)
+	}
+
+	return &Polorizer{wb: &writebuffer{}, cfg: *config}
 }
 
 // Bytes returns the contents of the Polorizer as bytes.
-//  - If no objects were polorized, it returns a WireNull wire
-//  - If only one object was polorized, it returns the contents directly
-//  - If more than one object was polorized, it returns the contents in a packed wire.
+//   - If no objects were polorized, it returns a WireNull wire
+//   - If only one object was polorized, it returns the contents directly
+//   - If more than one object was polorized, it returns the contents in a packed wire.
 func (polorizer Polorizer) Bytes() []byte {
 	switch polorizer.wb.counter {
 	case 0:
@@ -59,7 +68,15 @@ func (polorizer *Polorizer) PolorizeNull() {
 
 // PolorizeBytes encodes a bytes value into the Polorizer.
 // Encodes the bytes as is with the wire type being WireWord.
+//
+// If PackedBytes() is used when creating the Polorizer, the
+// bytes is encoded as a WirePack element instead of WireWord.
 func (polorizer *Polorizer) PolorizeBytes(value []byte) {
+	if polorizer.cfg.packedBytes {
+		polorizer.polorizeByteAsPack(value)
+		return
+	}
+
 	polorizer.wb.write(WireWord, value)
 }
 
@@ -247,6 +264,19 @@ func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
 
 	// Write the read buffer contents
 	polorizer.wb.write(buffer.wire, buffer.data)
+}
+
+// polorizeByteAsPack encodes a []byte as WirePack
+func (polorizer *Polorizer) polorizeByteAsPack(bytes []byte) {
+	// Create a polorizer for the byte pack
+	pack := NewPolorizer()
+	// Write each byte as a WirePosInt
+	for _, elem := range bytes {
+		pack.wb.write(WirePosInt, []byte{elem})
+	}
+
+	// Polorize the whole pack into the buffer
+	polorizer.PolorizePacked(pack)
 }
 
 // polorizeByteArrayValue accepts a reflect.Value and encodes it into the Polorizer.
