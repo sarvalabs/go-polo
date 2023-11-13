@@ -15,6 +15,8 @@ type Depolorizer struct {
 
 	data readbuffer
 	pack *packbuffer
+
+	cfg wireConfig
 }
 
 // NewDepolorizer returns a new Depolorizer for some given bytes.
@@ -22,7 +24,14 @@ type Depolorizer struct {
 //
 // If the given data is a compound wire, the only element in the Depolorizer will be the compound data, and
 // it will need to be unwrapped into another Depolorizer with DepolorizePacked() before decoding its elements
-func NewDepolorizer(data []byte) (*Depolorizer, error) {
+func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, error) {
+	// Generate a default wire config
+	config := defaultWireConfig()
+	// Apply any given options to the config
+	for _, opt := range options {
+		opt(config)
+	}
+
 	// Create a new readbuffer from the wire
 	rb, err := newreadbuffer(data)
 	if err != nil {
@@ -30,23 +39,7 @@ func NewDepolorizer(data []byte) (*Depolorizer, error) {
 	}
 
 	// Create a non-pack Depolorizer
-	return &Depolorizer{data: rb}, nil
-}
-
-func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
-	// Create a new readbuffer from the wire
-	rb, err := newreadbuffer(data)
-	if err != nil {
-		return nil, IncompatibleWireError{err.Error()}
-	}
-
-	// Check that wire type is WirePack
-	if rb.wire != WirePack {
-		return nil, IncompatibleWireType(rb.wire, WirePack)
-	}
-
-	// Create a pack Depolorizer
-	return newLoadDepolorizer(rb)
+	return &Depolorizer{data: rb, cfg: *config}, nil
 }
 
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
@@ -141,6 +134,10 @@ func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 	data, err := depolorizer.read()
 	if err != nil {
 		return nil, err
+	}
+
+	if depolorizer.cfg.packedBytes {
+		return allowNilValue(data.decodeBytesFromPack())
 	}
 
 	return allowNilValue(data.decodeBytes())

@@ -122,6 +122,45 @@ func (rb readbuffer) decodeBytes() ([]byte, error) {
 	}
 }
 
+func (rb readbuffer) decodeBytesFromPack() ([]byte, error) {
+	switch rb.wire {
+	// Packed Bytes Value ([]uint8)
+	case WirePack:
+		// Unpack the pack encoded data
+		pack, err := rb.unpack()
+		if err != nil {
+			return nil, err
+		}
+
+		packed := make([]byte, 0)
+
+		// Iterate on the pack items
+		for !pack.done() {
+			// Obtain the pack item
+			item, err := pack.next()
+			if err != nil {
+				return nil, err
+			}
+
+			// Attempt to decode the item into a uint8
+			decoded, err := item.decodeUint8()
+			if err != nil {
+				return nil, err
+			}
+
+			packed = append(packed, decoded)
+		}
+
+		return packed, nil
+
+	// Nil Byte Slice (Default)
+	case WireNull:
+		return nil, nilValue
+	default:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WirePack)
+	}
+}
+
 func (rb readbuffer) decodeString() (string, error) {
 	switch rb.wire {
 	// Convert []byte to string
