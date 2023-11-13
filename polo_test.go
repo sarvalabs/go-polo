@@ -206,17 +206,25 @@ func ExampleWireDecoding() {
 	// &{[6 111 114 97 110 103 101] 300 [tangerine mandarin]}
 }
 
-func testObject[T any](t *testing.T, x T) {
-	wire, err := Polorize(x)
+// testSerialization is a generic function that tests the serialization consistency for a given object.
+// It is to be used on fuzzed values and accepts some encoding options that are applied at every encode/decode step.
+// The steps performed in this function are as follows
+//  1. Encode the given object (options applied)
+//  2. Decode the wire output of step 1 (options applied)
+//  3. Verify object equality (given object == decoded object)
+//  4. Encode the decoded object (options applied)
+//  5. Verify wire equality (step 1 wire == step 4 wire)
+func testSerialization[T any](t *testing.T, x T, options ...EncodingOptions) {
+	wire, err := Polorize(x, options...)
 	require.Nil(t, err)
 
 	y := new(T)
-	err = Depolorize(y, wire)
+	err = Depolorize(y, wire, options...)
 
 	require.Nil(t, err, "Unexpected Error. Input: %v", x)
 	require.Equal(t, x, *y, "Object Mismatch. Input: %v", x)
 
-	rewire, err := Polorize(*y)
+	rewire, err := Polorize(*y, options...)
 	require.Nil(t, err)
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
 }
@@ -283,7 +291,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -292,7 +300,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -301,7 +309,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -310,7 +318,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -319,7 +327,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -328,7 +336,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -337,7 +345,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -346,7 +354,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -355,7 +363,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -364,7 +372,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -373,7 +381,7 @@ func TestInteger(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -391,7 +399,7 @@ func TestBool(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -400,7 +408,7 @@ func TestBool(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -421,7 +429,7 @@ func TestWord(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -430,7 +438,16 @@ func TestWord(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
+		}
+	})
+
+	t.Run("Bytes-Packed", func(t *testing.T) {
+		var x []byte
+
+		for i := 0; i < 1000; i++ {
+			f.Fuzz(&x)
+			testSerialization(t, x, PackedBytes())
 		}
 	})
 
@@ -439,7 +456,7 @@ func TestWord(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -476,7 +493,7 @@ func TestFloat(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -485,7 +502,7 @@ func TestFloat(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -494,7 +511,7 @@ func TestFloat(t *testing.T) {
 
 		for i := 0; i < 100000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -523,7 +540,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -532,7 +549,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -541,7 +558,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -550,7 +567,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -559,7 +576,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -568,7 +585,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -577,7 +594,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -586,7 +603,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -595,7 +612,16 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
+		}
+	})
+
+	t.Run("Byte Array Packed", func(t *testing.T) {
+		var x [32]byte
+
+		for i := 0; i < 1000; i++ {
+			f.Fuzz(&x)
+			testSerialization(t, x, PackedBytes())
 		}
 	})
 
@@ -604,7 +630,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -613,7 +639,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -622,7 +648,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -631,7 +657,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -640,7 +666,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -649,7 +675,7 @@ func TestSequence(t *testing.T) {
 
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -676,7 +702,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -685,7 +711,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -694,7 +720,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -703,7 +729,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -712,7 +738,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -721,7 +747,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -743,7 +769,7 @@ func TestMapping(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -763,7 +789,7 @@ func TestPointer(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		f.Fuzz(&x)
-		testObject(t, x)
+		testSerialization(t, x)
 	}
 }
 
@@ -780,7 +806,7 @@ func TestNested(t *testing.T) {
 
 	for i := 0; i < 10000; i++ {
 		f.Fuzz(&x)
-		testObject(t, x)
+		testSerialization(t, x)
 	}
 }
 
@@ -809,7 +835,7 @@ func TestBig(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -818,7 +844,7 @@ func TestBig(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 }
@@ -837,7 +863,7 @@ func TestRawAny(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -846,7 +872,7 @@ func TestRawAny(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -888,7 +914,7 @@ func TestDocument(t *testing.T) {
 
 	for i := 0; i < 10000; i++ {
 		f.Fuzz(&x)
-		testObject(t, x)
+		testSerialization(t, x)
 	}
 }
 
@@ -1001,13 +1027,13 @@ func TestAlias(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		f.Fuzz(&x)
-		testObject(t, x)
+		testSerialization(t, x)
 	}
 }
 
 func TestEmpty(t *testing.T) {
 	x := struct{}{}
-	testObject(t, x)
+	testSerialization(t, x)
 }
 
 func TestNullObject(t *testing.T) {
@@ -1571,7 +1597,7 @@ func TestCustomEncoding(t *testing.T) {
 
 		for i := 0; i < 10000; i++ {
 			f.Fuzz(&x)
-			testObject(t, x)
+			testSerialization(t, x)
 		}
 	})
 
@@ -1619,5 +1645,5 @@ func TestPointerAlias(t *testing.T) {
 	}
 
 	object := Object{nil, nil}
-	testObject(t, object)
+	testSerialization(t, object)
 }
