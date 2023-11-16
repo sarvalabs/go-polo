@@ -370,3 +370,43 @@ func (rb readbuffer) decodeBigInt() (*big.Int, error) {
 		return nil, IncompatibleWireType(rb.wire, WireNull, WirePosInt, WireNegInt)
 	}
 }
+
+func (rb readbuffer) decodeDocument() (Document, error) {
+	switch rb.wire {
+	case WireDoc:
+		// Get the next element as a pack depolorizer with the slice elements
+		pack, err := newLoadDepolorizer(rb)
+		if err != nil {
+			return nil, err
+		}
+
+		doc := make(Document)
+
+		// Iterate on the pack until done
+		for !pack.Done() {
+			// Depolorize the next object from the pack into the Document key (string)
+			docKey, err := pack.DepolorizeString()
+			if err != nil {
+				return nil, err
+			}
+
+			// Depolorize the next object from the pack into the Document val (raw)
+			docVal, err := pack.DepolorizeRaw()
+			if err != nil {
+				return nil, err
+			}
+
+			// Set the value bytes into the document for the decoded key
+			doc.SetRaw(docKey, docVal)
+		}
+
+		return doc, nil
+
+	// Nil Document
+	case WireNull:
+		return nil, nil
+
+	default:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WireDoc)
+	}
+}

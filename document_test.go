@@ -39,14 +39,14 @@ func ExampleDocument() {
 	// [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
 }
 
-// ExampleDocumentEncode is an example for using DocumentEncode to encode a
+// ExamplePolorizeDocument is an example for using PolorizeDocument to encode a
 // struct into a Document and then further serializing it into document encoded POLO bytes
-func ExampleDocumentEncode() {
+func ExamplePolorizeDocument() {
 	// Create a Fruit object
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
 
 	// Encode the object into a Document
-	document, err := DocumentEncode(orange)
+	document, err := PolorizeDocument(orange)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -69,9 +69,9 @@ func ExampleDocumentEncode() {
 	// [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
 }
 
-// ExampleDocumentDecode_ToDocument is an example of using the Depolorize
+// ExampleDepolorizeDocument_ToDocument is an example of using the Depolorize
 // function to decode a document-encoded wire into a Document object
-func ExampleDocumentDecode_ToDocument() {
+func ExampleDepolorizeDocument_ToDocument() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
@@ -92,9 +92,9 @@ func ExampleDocumentDecode_ToDocument() {
 	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
 }
 
-// ExampleDocumentDecode_ToStruct is an example of using the Depolorize
+// ExampleDepolorizeDocument_ToStruct is an example of using the Depolorize
 // function to decode a document encoded wire into a Fruit object
-func ExampleDocumentDecode_ToStruct() {
+func ExampleDepolorizeDocument_ToStruct() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
@@ -104,7 +104,7 @@ func ExampleDocumentDecode_ToStruct() {
 	// Create a new instance of Fruit
 	object := new(Fruit)
 	// Deserialize the document bytes into the Fruit object
-	if err := Depolorize(object, wire); err != nil {
+	if err := Depolorize(object, wire, DocStructs()); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -217,7 +217,7 @@ func TestDocument_Get(t *testing.T) {
 	assert.EqualError(t, err, "document value could not be decoded for key 'bar': incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}")
 }
 
-func TestDocumentEncode(t *testing.T) {
+func TestPolorizeDocument(t *testing.T) {
 	type ObjectA struct {
 		A string
 		B string
@@ -283,7 +283,7 @@ func TestDocumentEncode(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		doc, err := DocumentEncode(test.object)
+		doc, err := PolorizeDocument(test.object)
 		if test.err == "" {
 			assert.Nil(t, err)
 			assert.Equal(t, test.doc, doc)
@@ -358,42 +358,43 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 	}
 
 	tests := []struct {
-		bytes  []byte
-		target any
-		object any
-		err    string
+		bytes   []byte
+		target  any
+		object  any
+		options []EncodingOptions
+		err     string
 	}{
 		{
-			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
-			new(Object), &Object{A: 300}, "",
+			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44}, new(Object),
+			&Object{A: 300}, []EncodingOptions{DocStructs()}, "",
+		},
+		{
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89}, new(Object),
+			&Object{A: 54, B: 89}, []EncodingOptions{DocStructs()}, "",
 		},
 		{
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
-			new(Object), &Object{A: 54, B: 89}, "",
-		},
-		{
-			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
-			new(Object), &Object{A: 54, B: 89}, "",
+			new(Object), &Object{A: 54, B: 89}, []EncodingOptions{DocStructs()}, "",
 		},
 		{
 			[]byte{13, 95, 7, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
-			new(Object), new(Object),
+			new(Object), new(Object), []EncodingOptions{DocStructs()},
 			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
 		},
 		{
 			[]byte{13, 47, 6, 53, 98, 111, 111, 142},
-			new(Object), new(Object),
+			new(Object), new(Object), []EncodingOptions{DocStructs()},
 			"incompatible wire: malformed tag: varint terminated prematurely",
 		},
 		{
 			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
-			new(Object), new(Object),
+			new(Object), new(Object), []EncodingOptions{DocStructs()},
 			"incompatible wire: unexpected wiretype 'word'. expected one of: {raw}",
 		},
 	}
 
 	for _, test := range tests {
-		err := Depolorize(test.target, test.bytes)
+		err := Depolorize(test.target, test.bytes, test.options...)
 		assert.Equal(t, test.object, test.target)
 
 		if test.err == "" {
