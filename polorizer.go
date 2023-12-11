@@ -232,7 +232,7 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Sort the document keys
 	sort.Strings(keys)
 	// Create a new polorizer for the document elements
-	documentWire := NewPolorizer(InheritConfig(polorizer.cfg))
+	documentWire := NewPolorizer(inheritCfg(polorizer.cfg))
 
 	// Serialize each key (string) and value (bytes)
 	for _, key := range keys {
@@ -272,7 +272,7 @@ func (polorizer *Polorizer) polorizeStructIntoDoc(value reflect.Value) (Document
 			fieldName = tag
 		}
 
-		if err := doc.Set(fieldName, value.Field(i).Interface(), InheritConfig(polorizer.cfg)); err != nil {
+		if err := doc.Set(fieldName, value.Field(i).Interface(), inheritCfg(polorizer.cfg)); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
 	}
@@ -286,7 +286,7 @@ func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document
 
 	// For each key in the map, encode the value and set it with the string key
 	for _, k := range value.MapKeys() {
-		if err := doc.Set(k.String(), value.MapIndex(k).Interface(), InheritConfig(polorizer.cfg)); err != nil {
+		if err := doc.Set(k.String(), value.MapIndex(k).Interface(), inheritCfg(polorizer.cfg)); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
 	}
@@ -315,7 +315,7 @@ func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
 // polorizeByteAsPack encodes a []byte as WirePack
 func (polorizer *Polorizer) polorizeByteAsPack(bytes []byte) {
 	// Create a polorizer for the byte pack
-	pack := NewPolorizer(InheritConfig(polorizer.cfg))
+	pack := NewPolorizer(inheritCfg(polorizer.cfg))
 	// Write each byte as a WirePosInt
 	for _, elem := range bytes {
 		pack.wb.write(WirePosInt, []byte{elem})
@@ -341,7 +341,7 @@ func (polorizer *Polorizer) polorizeByteArrayValue(value reflect.Value) {
 // polorizeArrayValue accepts a reflect.Value and encodes it into the Polorizer.
 // The value must be an array or slice and is encoded as element pack encoded data.
 func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
-	array := NewPolorizer(InheritConfig(polorizer.cfg))
+	array := NewPolorizer(inheritCfg(polorizer.cfg))
 
 	// Serialize each element into the writebuffer
 	for i := 0; i < value.Len(); i++ {
@@ -375,7 +375,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 	sort.Slice(keys, sorter(keys))
 
 	// Create a new polorizer for the map elements
-	mapping := NewPolorizer(InheritConfig(polorizer.cfg))
+	mapping := NewPolorizer(inheritCfg(polorizer.cfg))
 	// Serialize each key and its value into the polorizer
 	for _, k := range keys {
 		// Polorize the key into the buffer
@@ -411,7 +411,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 	// Get the Type of the value
 	t := value.Type()
 
-	structure := NewPolorizer(InheritConfig(polorizer.cfg))
+	structure := NewPolorizer(inheritCfg(polorizer.cfg))
 	// Serialize each field into the writebuffer
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)

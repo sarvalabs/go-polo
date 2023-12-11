@@ -51,7 +51,8 @@ func DocStringMaps() EncodingOptions {
 	}
 }
 
-func InheritConfig(inherit wireConfig) EncodingOptions {
+// inheritCfg is an EncodingOption that inherits the full config
+func inheritCfg(inherit wireConfig) EncodingOptions {
 	return func(config *wireConfig) {
 		*config = inherit
 	}

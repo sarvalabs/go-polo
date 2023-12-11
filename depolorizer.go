@@ -513,7 +513,7 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 		// Iterate over the document elements
 		for key, raw := range doc {
 			// Create a new decoder for the raw value (inherit configuration)
-			decoder, err := NewDepolorizer(raw, InheritConfig(depolorizer.cfg))
+			decoder, err := NewDepolorizer(raw, inheritCfg(depolorizer.cfg))
 			if err != nil {
 				return zeroVal, err
 			}
@@ -632,7 +632,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 				continue
 			}
 
-			object, err := NewDepolorizer(data, InheritConfig(depolorizer.cfg))
+			object, err := NewDepolorizer(data, inheritCfg(depolorizer.cfg))
 			if err != nil {
 				return zeroVal, err
 			}
