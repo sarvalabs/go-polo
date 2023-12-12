@@ -295,6 +295,56 @@ func TestPolorizeDocument(t *testing.T) {
 	}
 }
 
+func TestDocument_Encode(t *testing.T) {
+	type ObjectA struct {
+		A string
+		B uint64
+	}
+
+	type ObjectB struct {
+		A chan int
+		B string
+	}
+
+	tests := []struct {
+		object  any
+		options []EncodingOptions
+		wire    []byte
+		err     string
+	}{
+		{
+			ObjectA{A: "foo", B: 300}, []EncodingOptions{DocStructs()},
+			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 3, 1, 44},
+			"",
+		},
+		{
+			map[string]string{"foo": "bar", "boo": "far"}, []EncodingOptions{DocStringMaps()},
+			[]byte{13, 95, 6, 53, 118, 165, 1, 98, 111, 111, 6, 102, 97, 114, 102, 111, 111, 6, 98, 97, 114},
+			"",
+		},
+		{
+			ObjectB{make(chan int), "foo"}, []EncodingOptions{DocStructs()}, nil,
+			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
+		},
+		{
+			map[string]chan int{"foo": make(chan int)}, []EncodingOptions{DocStringMaps()}, nil,
+			"could not encode into document: document value could not be encoded for key 'foo': incompatible value error: unsupported type: chan int [chan]",
+		},
+	}
+
+	for _, test := range tests {
+		encoded, err := Polorize(test.object, test.options...)
+		if test.err == "" {
+			assert.Nil(t, err)
+			assert.Equal(t, test.wire, encoded)
+		} else {
+			assert.EqualError(t, err, test.err)
+		}
+
+		fmt.Println(encoded)
+	}
+}
+
 func TestDocument_DecodeToDocument(t *testing.T) {
 	tests := []struct {
 		bytes []byte
@@ -358,6 +408,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 	}
 
 	tests := []struct {
+		name    string
 		bytes   []byte
 		target  any
 		object  any
@@ -365,43 +416,77 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 		err     string
 	}{
 		{
+			"",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44}, new(Object),
 			&Object{A: 300}, []EncodingOptions{DocStructs()}, "",
 		},
 		{
+			"",
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0}, new(Object),
+			&Object{A: 54}, []EncodingOptions{DocStructs()}, "",
+		},
+		{
+			"",
+			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44}, new(map[string]int),
+			&map[string]int{"boo": 300}, []EncodingOptions{DocStringMaps()}, "",
+		},
+		{
+			"",
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0}, new(map[string]int),
+			&map[string]int{"boo": 54, "foo": 0}, []EncodingOptions{DocStringMaps()}, "",
+		},
+		{
+			"",
+			[]byte{13, 79, 6, 53, 70, 117, 98, 97, 114, 0, 102, 111, 111, 14, 47, 6, 54, 98, 111, 111, 119, 111, 111},
+			new(map[string][]string), &map[string][]string{"foo": {"boo", "woo"}, "bar": nil},
+			[]EncodingOptions{DocStringMaps()}, "",
+		},
+		{
+			"",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89}, new(Object),
 			&Object{A: 54, B: 89}, []EncodingOptions{DocStructs()}, "",
 		},
 		{
+			"",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
 			new(Object), &Object{A: 54, B: 89}, []EncodingOptions{DocStructs()}, "",
 		},
 		{
+			"",
 			[]byte{13, 95, 7, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
 			new(Object), new(Object), []EncodingOptions{DocStructs()},
 			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
 		},
 		{
+			"",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 142},
 			new(Object), new(Object), []EncodingOptions{DocStructs()},
-			"incompatible wire: malformed tag: varint terminated prematurely",
+			"malformed tag: varint terminated prematurely",
 		},
 		{
+			"",
 			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
 			new(Object), new(Object), []EncodingOptions{DocStructs()},
 			"incompatible wire: unexpected wiretype 'word'. expected one of: {raw}",
 		},
+		{
+			"",
+			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 1, 44},
+			new(Object), new(Object), []EncodingOptions{DocStructs()},
+			"incompatible wire: struct field [polo.Object.A <int>]: incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}", //nolint:lll
+		},
 	}
 
 	for _, test := range tests {
-		err := Depolorize(test.target, test.bytes, test.options...)
-		assert.Equal(t, test.object, test.target)
+		t.Run(test.name, func(t *testing.T) {
+			err := Depolorize(test.target, test.bytes, test.options...)
+			assert.Equal(t, test.object, test.target)
 
-		if test.err == "" {
-			assert.Nil(t, err)
-		} else {
-			assert.EqualError(t, err, test.err)
-		}
+			if test.err == "" {
+				assert.Nil(t, err)
+			} else {
+				assert.EqualError(t, err, test.err)
+			}
+		})
 	}
-
 }

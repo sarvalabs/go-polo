@@ -86,7 +86,7 @@ func TestNewDepolorizer(t *testing.T) {
 			[]byte{14, 47, 3, 35, 1, 44, 250}, "",
 			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
 		},
-		{[]byte{175}, "incompatible wire: malformed tag: varint terminated prematurely", nil},
+		{[]byte{175}, "malformed tag: varint terminated prematurely", nil},
 	}
 
 	for _, test := range tests {
@@ -461,7 +461,7 @@ func TestDepolorizer_ZeroValue(t *testing.T) {
 
 func TestInsufficientWire(t *testing.T) {
 	tests := []struct {
-		buf    *Depolorizer
+		buffer *Depolorizer
 		object any
 	}{
 		{&Depolorizer{data: readbuffer{}, done: true}, new(bool)},
@@ -488,7 +488,7 @@ func TestInsufficientWire(t *testing.T) {
 	}
 
 	for tno, test := range tests {
-		err := test.buf.Depolorize(test.object)
+		err := test.buffer.Depolorize(test.object)
 		assert.EqualError(t, err, ErrInsufficientWire.Error(), "Test No: %v", tno)
 	}
 }
