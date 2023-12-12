@@ -12,7 +12,7 @@
 
 [![issue count](https://img.shields.io/github/issues/sarvalabs/go-polo?style=for-the-badge&color=yellow)][issueslink]
 [![pulls count](https://img.shields.io/github/issues-pr/sarvalabs/go-polo?style=for-the-badge&color=brightgreen)][pullslink]
-![test status](https://img.shields.io/github/actions/workflow/status/sarvalabs/go-polo/testing.yml?label=tests&style=for-the-badge)
+![test status](https://img.shields.io/github/actions/workflow/status/sarvalabs/go-polo/ci.yaml?label=tests&style=for-the-badge)
 
 
 # go-polo
@@ -54,25 +54,25 @@ POLO's partially encoding and field order based indexing (and string based index
 
 ## Examples
 ### Simple Polorization & Depolorization (Encoding/Decoding)
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polo_test.go#L16-L62
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L16-L64
 
 ### Custom Polorization & Depolorization (Encoding/Decoding)
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polo_test.go#L64-L170
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L66-L175
 
 ### Wire Decoding with `Any`
-https://github.com/sarvalabs/go-polo/blob/95c01c91e9e3ceabc99d530e78a4f8bedadc13a1/polo_test.go#L172-L207
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L177-L214
 
 ### `Polorizer` (Encoding Buffer)
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/polorizer_test.go#L12-L40
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polorizer_test.go#L12-L42
 
 ### `Depolorizer` (Decoding Buffer)
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/depolorizer_test.go#L13-L64
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/depolorizer_test.go#L13-L70
 
 ### Document Encoding
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/document_test.go#L12-L70
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/document_test.go#L12-L74
 
 ### Document Decoding
-https://github.com/sarvalabs/go-polo/blob/cc0fdf369f903655817e8d548074f21db442c039/document_test.go#L72-L116
+https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/document_test.go#L76-L124
 
 ## Contributing
 Unless you explicitly state otherwise, any contribution intentionally submitted
