@@ -35,7 +35,7 @@ func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, erro
 	// Create a new readbuffer from the wire
 	rb, err := newreadbuffer(data)
 	if err != nil {
-		return nil, IncompatibleWireError{err.Error()}
+		return nil, err
 	}
 
 	// Create a non-pack Depolorizer
@@ -520,22 +520,14 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 
 			// Depolorize the raw value for the key into map's value type
 			val, err := decoder.depolorizeValue(valType)
-			if err != nil {
+			if err != nil && !errors.Is(err, nilValue) {
 				return zeroVal, err
 			}
 
-			// Create a value for val based on nullity of v
-			var mapVal reflect.Value
-			if val == zeroVal {
-				// Create a nil value
-				mapVal = reflect.New(valType).Elem()
-			} else {
-				// Reflect value of v and convert type
-				mapVal = val.Convert(valType)
+			if val != zeroVal {
+				// Set the key-value pair into the map value
+				mapping.SetMapIndex(reflect.ValueOf(key), val.Convert(valType))
 			}
-
-			// Set the key-value pair into the map value
-			mapping.SetMapIndex(reflect.ValueOf(key), mapVal)
 		}
 
 		return mapping, nil
@@ -638,7 +630,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 			}
 
 			fieldVal, err := object.depolorizeValue(field.Type)
-			if err != nil {
+			if err != nil && !errors.Is(err, nilValue) {
 				return zeroVal, IncompatibleWireError{fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err)}
 			}
 
