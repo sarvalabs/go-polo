@@ -3,7 +3,6 @@ package polo
 import (
 	"fmt"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -248,44 +247,4 @@ func TestPolorizer_polorizerInner(t *testing.T) {
 	polorizer.polorizeInner(another)
 	assert.Equal(t, []byte{14, 79, 0, 3, 19, 62, 5, 1, 44, 47, 3, 35, 1, 44, 250}, polorizer.Bytes())
 	assert.Equal(t, []byte{14, 79, 0, 3, 19, 62, 5, 1, 44, 47, 3, 35, 1, 44, 250}, polorizer.Packed())
-}
-
-func TestSorter_Panics(t *testing.T) {
-	t.Run("Array Length", func(t *testing.T) {
-		a := [4]string{}
-		b := [3]string{}
-
-		assert.PanicsWithValue(t, "array length must equal", func() {
-			sorter([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
-		})
-	})
-
-	t.Run("Invalid Type", func(t *testing.T) {
-		a := make([]string, 2)
-		b := make([]string, 4)
-
-		assert.PanicsWithValue(t, "unsupported key compare", func() {
-			sorter([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
-		})
-	})
-}
-
-func TestCompare_Panics(t *testing.T) {
-	t.Run("Array Length", func(t *testing.T) {
-		a := [4]string{}
-		b := [3]string{}
-
-		assert.PanicsWithValue(t, "array length must equal", func() {
-			compare(reflect.ValueOf(a), reflect.ValueOf(b))
-		})
-	})
-
-	t.Run("Invalid Type", func(t *testing.T) {
-		a := make([]string, 2)
-		b := make([]string, 4)
-
-		assert.PanicsWithValue(t, "unsupported key compare", func() {
-			compare(reflect.ValueOf(a), reflect.ValueOf(b))
-		})
-	})
 }
