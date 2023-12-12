@@ -1,10 +1,10 @@
 module github.com/sarvalabs/go-polo
 
-go 1.18
+go 1.20
 
 require (
 	github.com/google/gofuzz v1.2.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.4
 )
 
 require (
