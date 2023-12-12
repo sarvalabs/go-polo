@@ -490,3 +490,78 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 		})
 	}
 }
+
+func TestDocument_DeepStructs(t *testing.T) {
+	type Object1 struct {
+		A string
+		B uint64
+	}
+
+	type Object2 struct {
+		A uint32
+		B Object1
+	}
+
+	type Object3 struct {
+		A []string
+		B Object2
+	}
+
+	object := Object3{
+		A: []string{"foo", "boo"},
+		B: Object2{
+			A: 500,
+			B: Object1{
+				A: "foo",
+				B: 300,
+			},
+		},
+	}
+
+	// Simple Encoding - Just serialize the object with regular POLO encoding
+	// It will result in a pack-encoded wire
+	simpleEncoded, err := Polorize(object)
+	require.NoError(t, err)
+
+	// Shallow Document Encoding - Serialize the object with shallow document encoding.
+	// It will result in a doc-encoded wire with only Object3 fields being doc-encoded.
+	// Any deeper structs will be regularly pack-encoded
+	shallow, err := PolorizeDocument(object)
+	require.NoError(t, err)
+	shallowEncoded := shallow.Bytes()
+
+	// Deep Document Encoding - Serialize the object with deep document encoding.
+	// It will result in a doc-encoded wire with all structs at all depths being doc-encoded.
+	deepEncoded, err := Polorize(object, DocStructs())
+	require.NoError(t, err)
+
+	// None of the 3 generated wires must be the same.
+	require.NotEqual(t, simpleEncoded, deepEncoded)
+	require.NotEqual(t, simpleEncoded, shallowEncoded)
+	require.NotEqual(t, shallowEncoded, deepEncoded)
+
+	require.Equal(t, simpleEncoded, []byte{14, 63, 14, 158, 1, 47, 6, 54, 102, 111, 111, 98, 111, 111, 47, 3, 46, 1, 244, 47, 6, 51, 102, 111, 111, 1, 44})
+	require.Equal(t, shallowEncoded, []byte{13, 111, 6, 21, 182, 1, 197, 1, 65, 14, 47, 6, 54, 102, 111, 111, 98, 111, 111, 66, 14, 47, 3, 46, 1, 244, 47, 6, 51, 102, 111, 111, 1, 44})
+	require.Equal(t, deepEncoded, []byte{13, 111, 6, 21, 182, 1, 197, 1, 65, 14, 47, 6, 54, 102, 111, 111, 98, 111, 111, 66, 13, 79, 6, 21, 70, 85, 65, 3, 1, 244, 66, 13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 3, 1, 44})
+
+	// Decode the object from the simple-encoded wire
+	simpleDecoded := new(Object3)
+	err = Depolorize(simpleDecoded, simpleEncoded)
+	require.NoError(t, err)
+
+	// Decode the object from the shallow doc-encoded wire.
+	// Requires the DocStructs options to decode to top-level doc encoding
+	shallowDecoded := new(Object3)
+	err = Depolorize(shallowDecoded, shallowEncoded, DocStructs())
+	require.NoError(t, err)
+
+	// Decode the object from the deep doc-encoded wire
+	deepDecoded := new(Object3)
+	err = Depolorize(deepDecoded, deepEncoded, DocStructs())
+	require.NoError(t, err)
+
+	// All 3 decoded objects must be equal
+	require.Equal(t, simpleDecoded, shallowDecoded)
+	require.Equal(t, simpleDecoded, deepDecoded)
+	require.Equal(t, shallowDecoded, deepDecoded)
+}
