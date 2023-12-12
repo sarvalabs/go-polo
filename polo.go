@@ -14,10 +14,11 @@ type Polorizable interface {
 }
 
 // Polorize serializes an object into its POLO byte form.
+// Accepts EncodingOptions to modify the encoding behaviour.
 // Returns an error if object is an unsupported type such as functions or channels.
-func Polorize(object any) ([]byte, error) {
+func Polorize(object any, options ...EncodingOptions) ([]byte, error) {
 	// Create a new polorizer
-	polorizer := NewPolorizer()
+	polorizer := NewPolorizer(options...)
 
 	// Polorize the object
 	if err := polorizer.Polorize(object); err != nil {
@@ -35,9 +36,9 @@ type Depolorizable interface {
 
 // Depolorize deserializes a POLO encoded byte slice into an object.
 // Throws an error if the wire cannot be parsed or if the object is not a pointer.
-func Depolorize(object any, data []byte) error {
+func Depolorize(object any, data []byte, options ...EncodingOptions) error {
 	// Create a new depolorizer from the data
-	depolorizer, err := NewDepolorizer(data)
+	depolorizer, err := NewDepolorizer(data, options...)
 	if err != nil {
 		return err
 	}

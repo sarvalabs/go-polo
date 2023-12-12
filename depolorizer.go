@@ -15,6 +15,8 @@ type Depolorizer struct {
 
 	data readbuffer
 	pack *packbuffer
+
+	cfg wireConfig
 }
 
 // NewDepolorizer returns a new Depolorizer for some given bytes.
@@ -22,31 +24,22 @@ type Depolorizer struct {
 //
 // If the given data is a compound wire, the only element in the Depolorizer will be the compound data, and
 // it will need to be unwrapped into another Depolorizer with DepolorizePacked() before decoding its elements
-func NewDepolorizer(data []byte) (*Depolorizer, error) {
+func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, error) {
+	// Generate a default wire config
+	config := defaultWireConfig()
+	// Apply any given options to the config
+	for _, opt := range options {
+		opt(config)
+	}
+
 	// Create a new readbuffer from the wire
 	rb, err := newreadbuffer(data)
 	if err != nil {
-		return nil, IncompatibleWireError{err.Error()}
+		return nil, err
 	}
 
 	// Create a non-pack Depolorizer
-	return &Depolorizer{data: rb}, nil
-}
-
-func NewPackDepolorizer(data []byte) (*Depolorizer, error) {
-	// Create a new readbuffer from the wire
-	rb, err := newreadbuffer(data)
-	if err != nil {
-		return nil, IncompatibleWireError{err.Error()}
-	}
-
-	// Check that wire type is WirePack
-	if rb.wire != WirePack {
-		return nil, IncompatibleWireType(rb.wire, WirePack)
-	}
-
-	// Create a pack Depolorizer
-	return newLoadDepolorizer(rb)
+	return &Depolorizer{data: rb, cfg: *config}, nil
 }
 
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
@@ -141,6 +134,10 @@ func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 	data, err := depolorizer.read()
 	if err != nil {
 		return nil, err
+	}
+
+	if depolorizer.cfg.packBytes {
+		return allowNilValue(data.decodeBytesFromPack())
 	}
 
 	return allowNilValue(data.decodeBytes())
@@ -247,7 +244,7 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 		return nil, err
 	}
 
-	return documentDecode(data)
+	return data.decodeDocument()
 }
 
 // DepolorizeAny attempts to decode an Any from the Depolorizer, consuming one wire element.
@@ -497,6 +494,44 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 
 		return mapping, nil
 
+	case WireDoc:
+		// Only allow decoding from a document if the map's key type is string
+		// AND the decoder config allows for string map decoding
+		if !(depolorizer.cfg.docStrMaps && target.Key().Kind() == reflect.String) {
+			return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
+		}
+
+		// Decode the wire object into a Document
+		doc, err := data.decodeDocument()
+		if err != nil {
+			return zeroVal, err
+		}
+
+		valType := target.Elem()
+		mapping := reflect.MakeMap(target)
+
+		// Iterate over the document elements
+		for key, raw := range doc {
+			// Create a new decoder for the raw value (inherit configuration)
+			decoder, err := NewDepolorizer(raw, inheritCfg(depolorizer.cfg))
+			if err != nil {
+				return zeroVal, err
+			}
+
+			// Depolorize the raw value for the key into map's value type
+			val, err := decoder.depolorizeValue(valType)
+			if err != nil && !errors.Is(err, nilValue) {
+				return zeroVal, err
+			}
+
+			if val != zeroVal {
+				// Set the key-value pair into the map value
+				mapping.SetMapIndex(reflect.ValueOf(key), val.Convert(valType))
+			}
+		}
+
+		return mapping, nil
+
 	// Zero Value Map
 	case WireNull:
 		return reflect.New(target).Elem(), nil
@@ -551,7 +586,11 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 		return structure, nil
 
 	case WireDoc:
-		doc, err := documentDecode(data)
+		if !depolorizer.cfg.docStructs {
+			return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
+		}
+
+		doc, err := data.decodeDocument()
 		if err != nil {
 			return zeroVal, err
 		}
@@ -585,13 +624,13 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 				continue
 			}
 
-			object, err := NewDepolorizer(data)
+			object, err := NewDepolorizer(data, inheritCfg(depolorizer.cfg))
 			if err != nil {
 				return zeroVal, err
 			}
 
 			fieldVal, err := object.depolorizeValue(field.Type)
-			if err != nil {
+			if err != nil && !errors.Is(err, nilValue) {
 				return zeroVal, IncompatibleWireError{fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err)}
 			}
 
@@ -607,7 +646,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 		return zeroVal, nil
 
 	default:
-		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack, WireDoc)
+		return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
 	}
 }
 

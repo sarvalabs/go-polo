@@ -94,7 +94,7 @@ func BenchmarkDocument(b *testing.B) {
 		E: 45.23,
 	}
 
-	document, _ := DocumentEncode(object)
+	document, _ := PolorizeDocument(object)
 	docwire := document.Bytes()
 
 	newObject := new(MixedObject)
@@ -102,7 +102,7 @@ func BenchmarkDocument(b *testing.B) {
 
 	b.Run("Doc Encode", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_, _ = DocumentEncode(object)
+			_, _ = PolorizeDocument(object)
 		}
 	})
 
