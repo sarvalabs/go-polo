@@ -13,7 +13,7 @@ var (
 	zeroVal = reflect.ValueOf(nil)
 	// nilValue is an error for when a WireNull is encountered during reflective decoding.
 	// It acts a signal for error and value handlers.
-	nilValue = errors.New("nil value")
+	errNilValue = errors.New("nil value")
 
 	// ErrNullPack is an error for when a WireNull is attempted to be converted to a Depolorizer
 	ErrNullPack = errors.New("null pack element")
@@ -54,6 +54,7 @@ func IncompatibleWireType(actual WireType, expected ...WireType) IncompatibleWir
 	}
 
 	data := "{" + strings.Join(expects, `, `) + `}`
+
 	return IncompatibleWireError{fmt.Sprintf("unexpected wiretype '%v'. expected one of: %v", actual, data)}
 }
 

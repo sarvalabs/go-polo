@@ -1,0 +1,67 @@
+run:
+  tests: true
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 5m
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 1
+
+linters:
+  disable-all: true
+  enable:
+    - dogsled
+    - dupl
+    - depguard
+    - errname
+    - errorlint
+    - forcetypeassert
+    - exportloopref
+    - goconst
+    - gocritic
+    - gofumpt
+    - gosec
+    - gosimple
+    - govet
+    - importas
+    - ineffassign
+    - lll
+    - makezero
+    - misspell
+    - nakedret
+    - nolintlint
+    - predeclared
+    - prealloc
+    - staticcheck
+    - stylecheck
+    - tparallel
+    - thelper
+    - typecheck
+    - unconvert
+    - unused
+    - whitespace
+    - wsl
+
+issues:
+  exclude-rules:
+    - text: "Use of weak random number generator"
+      linters:
+        - gosec
+
+  max-issues-per-linter: 10000
+  max-same-issues: 10000
+
+linters-settings:
+  dogsled:
+    max-blank-identifiers: 3
+  maligned:
+    # print struct with more effective memory layout or not, false by default
+    suggest-new: true
+  nolintlint:
+    allow-unused: false # to be set to false once all issues are addressed, any exceptions needed to be added above
+    allow-leading-space: true
+    require-explanation: false # nice to have as true
+    require-specific: false
+  depguard:
+    Main:
+      allow:
+        - $github.com/sarvalabs/*
+        - github.com/pkg/errors

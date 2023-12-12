@@ -22,6 +22,8 @@ type Fruit struct {
 
 // ExamplePolorize is an example for using the Polorize function to
 // encode a Fruit object into its POLO wire form using Go reflection
+//
+//nolint:lll
 func ExamplePolorize() {
 	// Create a Fruit object
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
@@ -116,6 +118,7 @@ func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
 	if err != nil {
 		log.Fatalln("invalid field 'Cost':", err)
 	}
+
 	fruit.Cost = int(Cost)
 
 	// Decode a new Depolorizer to deserialize the Alias field (slice)
@@ -139,6 +142,8 @@ func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
 
 // ExampleCustomEncoding is an example for using custom serialization and deserialization on the
 // CustomFruit type by implementing the Polorizable and Depolorizable interfaces for it.
+//
+//nolint:govet, lll
 func ExampleCustomEncoding() {
 	// Create a CustomFruit object
 	orange := &CustomFruit{"orange", 300, []string{"tangerine", "mandarin"}}
@@ -171,6 +176,8 @@ func ExampleCustomEncoding() {
 
 // ExampleWireDecoding is an example for using the Any type to capture
 // the raw POLO encoded bytes for a specific field of the Fruit object.
+//
+//nolint:govet, lll
 func ExampleWireDecoding() {
 	// RawFruit is a struct that can capture the raw POLO bytes of each field
 	type RawFruit struct {
@@ -215,6 +222,8 @@ func ExampleWireDecoding() {
 //  4. Encode the decoded object (options applied)
 //  5. Verify wire equality (step 1 wire == step 4 wire)
 func testSerialization[T any](t *testing.T, x T, options ...EncodingOptions) {
+	t.Helper()
+
 	wire, err := Polorize(x, options...)
 	require.Nil(t, err)
 
@@ -229,7 +238,7 @@ func testSerialization[T any](t *testing.T, x T, options ...EncodingOptions) {
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
 }
 
-func fuzzAny(any *Any, c fuzz.Continue) {
+func fuzzAny(val *Any, c fuzz.Continue) {
 	polorizer := NewPolorizer()
 
 	for i := 0; i <= c.Intn(2); i++ {
@@ -253,17 +262,19 @@ func fuzzAny(any *Any, c fuzz.Continue) {
 		}
 	}
 
-	*any = polorizer.Bytes()
+	*val = polorizer.Bytes()
 }
 
-func fuzzRaw(raw *Raw, c fuzz.Continue) {
+func fuzzRaw(val *Raw, c fuzz.Continue) {
 	var anybytes Any
+
 	c.Fuzz(&anybytes)
+
 	if anybytes == nil {
 		anybytes = Any{0}
 	}
 
-	*raw = Raw(anybytes)
+	*val = Raw(anybytes)
 }
 
 type IntegerObject struct {
@@ -754,13 +765,13 @@ func TestMapping(t *testing.T) {
 	t.Run("Array Keyed Map", func(t *testing.T) {
 		var err error
 
-		_, err = Polorize(map[[3]uint64]string{[3]uint64{10, 12, 12}: "foo", [3]uint64{10, 11, 11}: "boo"})
+		_, err = Polorize(map[[3]uint64]string{{10, 12, 12}: "foo", {10, 11, 11}: "boo"})
 		require.Nil(t, err)
 
-		_, err = Polorize(map[[3]int64]string{[3]int64{10, 12, 12}: "foo", [3]int64{10, 11, 11}: "boo"})
+		_, err = Polorize(map[[3]int64]string{{10, 12, 12}: "foo", {10, 11, 11}: "boo"})
 		require.Nil(t, err)
 
-		_, err = Polorize(map[[3]float32]string{[3]float32{10, 12, 12}: "foo", [3]float32{10, 11, 11}: "boo"})
+		_, err = Polorize(map[[3]float32]string{{10, 12, 12}: "foo", {10, 11, 11}: "boo"})
 		require.Nil(t, err)
 	})
 
@@ -904,7 +915,6 @@ func TestRawAny(t *testing.T) {
 			require.Equal(t, Any(wireC), y.C)
 		}
 	})
-
 }
 
 func TestDocument(t *testing.T) {
@@ -927,8 +937,10 @@ type InterfaceObject struct {
 }
 
 func TestInterface(t *testing.T) {
-	var x1, x2, x3 string
-	var x InterfaceObject
+	var (
+		x1, x2, x3 string
+		x          InterfaceObject
+	)
 
 	x = InterfaceObject{x1, x2, x3}
 	wire, err := Polorize(x)
@@ -961,7 +973,7 @@ func TestUnsupported(t *testing.T) {
 	require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
 
 	// Map with Unsupported Type for Keys
-	_, err = Polorize(map[[2]SimpleInterface]string{[2]SimpleInterface{"foo", "fon"}: "bar", [2]SimpleInterface{"boo", "bon"}: "far"})
+	_, err = Polorize(map[[2]SimpleInterface]string{{"foo", "fon"}: "bar", {"boo", "bon"}: "far"})
 	require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
 
 	// Map with Unsupported Type for Values
@@ -1075,6 +1087,7 @@ func TestNullObject(t *testing.T) {
 
 func TestNullWire(t *testing.T) {
 	var err error
+
 	wire := []byte{0}
 
 	t.Run("Bool", func(t *testing.T) {
@@ -1139,7 +1152,7 @@ func TestNullWire(t *testing.T) {
 		err = Depolorize(x, wire)
 
 		require.Nil(t, err)
-		assert.Equal(t, *new([4]string), *x)
+		assert.Equal(t, [4]string{}, *x)
 	})
 
 	t.Run("Map", func(t *testing.T) {
@@ -1211,7 +1224,10 @@ func TestExcessIntegerData(t *testing.T) {
 		err := Depolorize(test.object, test.wire)
 		if test.signed {
 			assert.EqualError(t, err,
-				fmt.Sprintf("incompatible value error: excess data for %v-bit integer", test.size), "[%v] Input: %v", tno, test.wire)
+				fmt.Sprintf(
+					"incompatible value error: excess data for %v-bit integer", test.size),
+				"[%v] Input: %v", tno, test.wire,
+			)
 		}
 	}
 }
@@ -1250,6 +1266,7 @@ func TestMalformedFloatData(t *testing.T) {
 	}
 }
 
+//nolint:lll
 func TestIncompatibleWireType(t *testing.T) {
 	tests := []struct {
 		wire    []byte
@@ -1259,102 +1276,122 @@ func TestIncompatibleWireType(t *testing.T) {
 	}{
 		{
 			[]byte{2},
-			new(float32), []EncodingOptions{},
+			new(float32),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, float}"},
 		},
 		{
 			[]byte{4, 1},
-			new(float64), []EncodingOptions{},
+			new(float64),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, float}"},
 		},
 		{
 			[]byte{7, 111, 114, 97, 110, 103, 101},
-			new(string), []EncodingOptions{},
+			new(string),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{3, 44},
-			new(bool), []EncodingOptions{},
+			new(bool),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, true, false}"},
 		},
 		{
 			[]byte{2},
-			new(uint64), []EncodingOptions{},
+			new(uint64),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, posint}"},
 		},
 		{
 			[]byte{4, 45, 22},
-			new([]string), []EncodingOptions{},
+			new([]string),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{4, 45, 22},
-			new([]byte), []EncodingOptions{},
+			new([]byte),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{3, 45, 22},
-			new([4]string), []EncodingOptions{},
+			new([4]string),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{5, 45, 22},
-			new(map[string]string), []EncodingOptions{},
+			new(map[string]string),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{7, 45, 22, 56, 34},
-			new(big.Int), []EncodingOptions{},
+			new(big.Int),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, posint, negint}"},
 		},
 		{
 			[]byte{3, 45, 22},
-			new(*IntegerObject), []EncodingOptions{},
+			new(*IntegerObject),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{14, 95, 3, 3, 3, 3, 3},
-			&WordObject{}, []EncodingOptions{},
+			&WordObject{},
+			[]EncodingOptions{},
 			IncompatibleWireError{"struct field [polo.WordObject.A <string>]: incompatible wire: unexpected wiretype 'posint'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{14, 95, 1, 0, 0, 0, 0},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
 			[]byte{13, 47, 6, 21, 65, 1},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'document'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{13, 95, 7, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
-			new(Document), []EncodingOptions{},
+			new(Document),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{14, 31, 4, 132},
-			new([]uint64), []EncodingOptions{},
+			new([]uint64),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, posint}"},
 		},
 		{
 			[]byte{6, 45, 56},
-			new([]byte), []EncodingOptions{PackedBytes()},
+			new([]byte),
+			[]EncodingOptions{PackedBytes()},
 			IncompatibleWireError{"unexpected wiretype 'word'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
-			new(map[string]int), []EncodingOptions{},
+			new(map[string]int),
+			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'document'. expected one of: {null, pack}"},
 		},
 		{
 			[]byte{13, 47, 5, 53, 98, 111, 111, 3, 1, 44},
-			new(map[string]int), []EncodingOptions{DocStringMaps()},
+			new(map[string]int),
+			[]EncodingOptions{DocStringMaps()},
 			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, word}"},
 		},
 		{
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 145, 12},
-			new(map[string]int), []EncodingOptions{DocStringMaps()},
+			new(map[string]int),
+			[]EncodingOptions{DocStringMaps()},
 			IncompatibleWireError{"unexpected wiretype 'word'. expected one of: {null, posint, negint}"},
 		},
 	}
@@ -1376,163 +1413,190 @@ func TestMalformed(t *testing.T) {
 		{
 			"",
 			[]byte{14, 78, 3, 3, 3, 3},
-			IntegerObject{}, []EncodingOptions{},
+			IntegerObject{},
+			[]EncodingOptions{},
 			ErrObjectNotPtr,
 		},
 		{
 			"",
 			[]byte{3, 255, 255, 255, 255, 255, 255, 255, 255},
-			new(int64), []EncodingOptions{},
+			new(int64),
+			[]EncodingOptions{},
 			IncompatibleValueError{"overflow for signed integer"},
 		},
 		{
 			"",
 			[]byte{14, 47, 3, 19, 102, 45, 67},
-			new([]byte), []EncodingOptions{PackedBytes()},
+			new([]byte),
+			[]EncodingOptions{PackedBytes()},
 			IncompatibleValueError{"excess data for 8-bit integer"},
 		},
 		{
 			"",
 			[]byte{255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 93, 3, 3, 3, 3, 3},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			MalformedTagError{errVarintOverflow.Error()},
 		},
 		{
 			"",
 			[]byte{14, 47, 6, 134},
-			new([][2]byte), []EncodingOptions{},
+			new([][2]byte),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{6, 255, 255, 255},
-			new([2]byte), []EncodingOptions{},
+			new([2]byte),
+			[]EncodingOptions{},
 			IncompatibleWireError{"mismatched data length for byte array"},
 		},
 		{
 			"",
 			[]byte{14, 78, 3, 3, 3, 3},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			errors.New("load convert fail: missing load tag"),
 		},
 		{
 			"",
 			[]byte{14, 255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 3, 3, 3, 3, 3},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint overflows 64-bit integer"),
 		},
 		{
 			"",
 			[]byte{14, 79, 3, 3, 3, 3, 0, 0, 0, 0},
-			&IntegerObject{}, []EncodingOptions{},
+			&IntegerObject{},
+			[]EncodingOptions{},
 			IncompatibleWireError{fmt.Sprintf("struct field [polo.IntegerObject.E <int64>]: %v", ErrInsufficientWire)},
 		},
 		{
 			"malformed varint when decoding document",
 			[]byte{13, 175},
-			new(Document), []EncodingOptions{},
+			new(Document),
+			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding slice",
 			[]byte{14, 175},
-			new([]string), []EncodingOptions{},
+			new([]string),
+			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding array",
 			[]byte{14, 175},
-			new([2]float32), []EncodingOptions{},
+			new([2]float32),
+			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding mapping",
 			[]byte{14, 175},
-			new(map[uint64]string), []EncodingOptions{},
+			new(map[uint64]string),
+			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding packed bytes",
 			[]byte{14, 175},
-			new([]byte), []EncodingOptions{PackedBytes()},
+			new([]byte),
+			[]EncodingOptions{PackedBytes()},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"",
 			[]byte{13, 63, 6, 53, 86, 101, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
-			new(Document), []EncodingOptions{},
+			new(Document),
+			[]EncodingOptions{},
 			errors.New("insufficient data in wire for decode"),
 		},
 		{
 			"",
 			[]byte{14, 47, 6, 230, 102, 111, 111},
-			new([]string), []EncodingOptions{},
+			new([]string),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
-			new([][]byte), []EncodingOptions{},
+			new([][]byte),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
-			new([2][]byte), []EncodingOptions{},
+			new([2][]byte),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 79, 6, 54, 102, 230, 1, 1, 1, 1, 1, 1},
-			new(map[string]string), []EncodingOptions{},
+			new(map[string]string),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 7, 231, 102, 111, 111},
-			new([]byte), []EncodingOptions{PackedBytes()},
+			new([]byte),
+			[]EncodingOptions{PackedBytes()},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 63, 6, 54, 230, 1, 1, 1, 1, 1, 1},
-			new(map[string]string), []EncodingOptions{},
+			new(map[string]string),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 7, 231, 102, 111, 111},
-			new([]float32), []EncodingOptions{},
+			new([]float32),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 7, 231, 102, 111, 111, 231, 102, 111, 111},
-			new([]float64), []EncodingOptions{},
+			new([]float64),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 5, 165, 1, 44, 250},
-			new([]big.Int), []EncodingOptions{},
+			new([]big.Int),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 3, 131},
-			new([]uint64), []EncodingOptions{},
+			new([]uint64),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{14, 47, 6, 203},
-			new(CustomEncodeObject), []EncodingOptions{},
+			new(CustomEncodeObject),
+			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 131},
-			new(map[string]int), []EncodingOptions{DocStringMaps()},
+			new(map[string]int),
+			[]EncodingOptions{DocStringMaps()},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 	}
@@ -1614,11 +1678,13 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 	object.B = int32(B)
 
 	c, err := depolorizer.DepolorizePacked()
-	if errors.Is(err, ErrNullPack) {
+
+	switch {
+	case errors.Is(err, ErrNullPack):
 		object.C = nil
-	} else if err != nil {
+	case err != nil:
 		return err
-	} else {
+	default:
 		object.C = make([]string, 0, 5)
 
 		for !c.Done() {
@@ -1632,11 +1698,13 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 	}
 
 	d, err := depolorizer.DepolorizePacked()
-	if errors.Is(err, ErrNullPack) {
+
+	switch {
+	case errors.Is(err, ErrNullPack):
 		object.D = nil
-	} else if err != nil {
+	case err != nil:
 		return err
-	} else {
+	default:
 		object.D = make(map[string]string)
 
 		for !d.Done() {

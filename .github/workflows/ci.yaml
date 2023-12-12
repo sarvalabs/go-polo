@@ -1,0 +1,36 @@
+name: Continuous Integration
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
+    paths:
+      - "**.go"
+      - "**.mod"
+      - "**.sum"
+      - ".github/workflows/**.yaml"
+
+  workflow_call: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yaml
+
+  test:
+    name: Test
+    needs: lint
+    uses: ./.github/workflows/test.yaml

@@ -104,7 +104,7 @@ func (rb readbuffer) decodeBool() (bool, error) {
 		return false, nil
 	// Default Value
 	case WireNull:
-		return false, nilValue
+		return false, errNilValue
 	default:
 		return false, IncompatibleWireType(rb.wire, WireNull, WireTrue, WireFalse)
 	}
@@ -116,7 +116,7 @@ func (rb readbuffer) decodeBytes() ([]byte, error) {
 		return rb.data, nil
 	// Nil Byte Slice (Default)
 	case WireNull:
-		return nil, nilValue
+		return nil, errNilValue
 	default:
 		return nil, IncompatibleWireType(rb.wire, WireNull, WireWord)
 	}
@@ -155,7 +155,7 @@ func (rb readbuffer) decodeBytesFromPack() ([]byte, error) {
 
 	// Nil Byte Slice (Default)
 	case WireNull:
-		return nil, nilValue
+		return nil, errNilValue
 	default:
 		return nil, IncompatibleWireType(rb.wire, WireNull, WirePack)
 	}
@@ -168,7 +168,7 @@ func (rb readbuffer) decodeString() (string, error) {
 		return string(rb.data), nil
 	// Empty String (Default)
 	case WireNull:
-		return "", nilValue
+		return "", errNilValue
 	default:
 		return "", IncompatibleWireType(rb.wire, WireNull, WireWord)
 	}
@@ -188,7 +188,7 @@ func (rb readbuffer) decodeUint64() (uint64, error) {
 		return number, nil
 
 	case WireNull:
-		return 0, nilValue
+		return 0, errNilValue
 	default:
 		return 0, IncompatibleWireType(rb.wire, WireNull, WirePosInt)
 	}
@@ -262,7 +262,7 @@ func (rb readbuffer) decodeInt64() (decoded int64, err error) {
 		return int64(number), nil
 
 	case WireNull:
-		return 0, nilValue
+		return 0, errNilValue
 	default:
 		return 0, IncompatibleWireType(rb.wire, WireNull, WirePosInt, WireNegInt)
 	}
@@ -327,7 +327,7 @@ func (rb readbuffer) decodeFloat32() (float32, error) {
 
 	// 0 (Default)
 	case WireNull:
-		return 0, nilValue
+		return 0, errNilValue
 	default:
 		return 0, IncompatibleWireType(rb.wire, WireNull, WireFloat)
 	}
@@ -350,7 +350,7 @@ func (rb readbuffer) decodeFloat64() (float64, error) {
 
 	// 0 (Default)
 	case WireNull:
-		return 0, nilValue
+		return 0, errNilValue
 	default:
 		return 0, IncompatibleWireType(rb.wire, WireNull, WireFloat)
 	}
@@ -365,7 +365,7 @@ func (rb readbuffer) decodeBigInt() (*big.Int, error) {
 
 	// Nil big.Int
 	case WireNull:
-		return nil, nilValue
+		return nil, errNilValue
 	default:
 		return nil, IncompatibleWireType(rb.wire, WireNull, WirePosInt, WireNegInt)
 	}

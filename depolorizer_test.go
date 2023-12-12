@@ -43,6 +43,7 @@ func ExampleDepolorizer() {
 	if err != nil {
 		log.Fatalln("invalid field 'Cost':", err)
 	}
+
 	object.Cost = int(Cost)
 
 	// Decode a new Depolorizer to deserialize the Alias field (slice)
@@ -75,15 +76,18 @@ func TestNewDepolorizer(t *testing.T) {
 		buf  *Depolorizer
 	}{
 		{
-			[]byte{0}, "",
+			[]byte{0},
+			"",
 			&Depolorizer{data: readbuffer{WireNull, []byte{}}},
 		},
 		{
-			[]byte{3, 1, 44}, "",
+			[]byte{3, 1, 44},
+			"",
 			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}},
 		},
 		{
-			[]byte{14, 47, 3, 35, 1, 44, 250}, "",
+			[]byte{14, 47, 3, 35, 1, 44, 250},
+			"",
 			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
 		},
 		{[]byte{175}, "malformed tag: varint terminated prematurely", nil},
@@ -254,7 +258,7 @@ func TestDepolorizer_DepolorizeUint(t *testing.T) {
 	assert.Equal(t, uint64(250), value)
 	assert.True(t, depolorizer.Done())
 
-	value, err = depolorizer.DepolorizeUint()
+	_, err = depolorizer.DepolorizeUint()
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
@@ -277,7 +281,7 @@ func TestDepolorizer_DepolorizeInt(t *testing.T) {
 	assert.Equal(t, int64(-250), value)
 	assert.True(t, depolorizer.Done())
 
-	value, err = depolorizer.DepolorizeInt()
+	_, err = depolorizer.DepolorizeInt()
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
@@ -301,7 +305,7 @@ func TestDepolorizer_DepolorizeFloat32(t *testing.T) {
 }
 
 func TestDepolorizer_DepolorizeFloat64(t *testing.T) {
-	depolorizer, err := NewDepolorizer([]byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143})
+	depolorizer, err := NewDepolorizer([]byte{14, 63, 7, 135, 1, 64, 94, 221, 47, 26, 159, 190, 119, 192, 88, 255, 92, 40, 245, 194, 143}) //nolint:lll
 	require.Nil(t, err)
 
 	depolorizer, err = depolorizer.DepolorizePacked()
@@ -367,7 +371,7 @@ func TestDepolorizer_DepolorizePacked(t *testing.T) {
 		depolorizer, err := NewDepolorizer([]byte{14, 47})
 		require.Nil(t, err)
 
-		depolorizer, err = depolorizer.DepolorizePacked()
+		_, err = depolorizer.DepolorizePacked()
 		assert.EqualError(t, err, "load convert fail: missing head: insufficient data in reader")
 	})
 
@@ -404,7 +408,7 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}}, inner)
 
-		inner, err = depolorizer.depolorizeInner()
+		_, err = depolorizer.depolorizeInner()
 		assert.EqualError(t, err, "insufficient data in wire for decode")
 	})
 

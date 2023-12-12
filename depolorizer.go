@@ -88,7 +88,7 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 
 	// Handle Errors or Nils
 	switch {
-	case err != nil && errors.Is(err, nilValue):
+	case err != nil && errors.Is(err, errNilValue):
 		return nil
 	case err != nil:
 		return err
@@ -98,6 +98,7 @@ func (depolorizer *Depolorizer) Depolorize(object any) error {
 
 	// Convert and set the decoded value
 	value.Elem().Set(result.Convert(target))
+
 	return nil
 }
 
@@ -119,7 +120,7 @@ func (depolorizer *Depolorizer) DepolorizeNull() error {
 }
 
 func allowNilValue[V any](value V, err error) (V, error) {
-	if errors.Is(err, nilValue) {
+	if errors.Is(err, errNilValue) {
 		return value, nil
 	}
 
@@ -520,7 +521,7 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 
 			// Depolorize the raw value for the key into map's value type
 			val, err := decoder.depolorizeValue(valType)
-			if err != nil && !errors.Is(err, nilValue) {
+			if err != nil && !errors.Is(err, errNilValue) {
 				return zeroVal, err
 			}
 
@@ -575,7 +576,9 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 			// Depolorize the next object from the pack into the map key type
 			val, err := pack.depolorizeValue(field.Type)
 			if err != nil {
-				return zeroVal, IncompatibleWireError{fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err)}
+				return zeroVal, IncompatibleWireError{
+					fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err),
+				}
 			}
 
 			if val != zeroVal {
@@ -630,8 +633,10 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 			}
 
 			fieldVal, err := object.depolorizeValue(field.Type)
-			if err != nil && !errors.Is(err, nilValue) {
-				return zeroVal, IncompatibleWireError{fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err)}
+			if err != nil && !errors.Is(err, errNilValue) {
+				return zeroVal, IncompatibleWireError{
+					fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err),
+				}
 			}
 
 			if fieldVal != zeroVal {
@@ -656,7 +661,7 @@ func (depolorizer *Depolorizer) depolorizePointer(target reflect.Type) (reflect.
 	value, err := depolorizer.depolorizeValue(target.Elem())
 
 	switch {
-	case err != nil && errors.Is(err, nilValue):
+	case err != nil && errors.Is(err, errNilValue):
 		return zeroVal, nil
 	case err != nil:
 		return zeroVal, err
@@ -686,7 +691,7 @@ func (depolorizer *Depolorizer) depolorizeDepolorizable(target reflect.Type) (re
 	// Call the Depolorize method of Depolorizable (accepts a Depolorizer and returns an error)
 	outputs := value.MethodByName("Depolorize").Call([]reflect.Value{reflect.ValueOf(inner)})
 	if !outputs[0].IsNil() {
-		return zeroVal, outputs[0].Interface().(error)
+		return zeroVal, outputs[0].Interface().(error) //nolint:forcetypeassert
 	}
 
 	return value.Elem(), nil
@@ -701,7 +706,6 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 	}
 
 	switch kind := target.Kind(); kind {
-
 	// Pointer Value
 	case reflect.Ptr:
 		return depolorizer.depolorizePointer(target)

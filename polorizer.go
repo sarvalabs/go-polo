@@ -88,7 +88,7 @@ func (polorizer *Polorizer) PolorizeString(value string) {
 // PolorizeBool encodes a bool value into the Polorizer.
 // Encodes the boolean as either WireTrue or WireFalse, depending on its value.
 func (polorizer *Polorizer) PolorizeBool(value bool) {
-	var wiretype = WireFalse
+	wiretype := WireFalse
 	if value {
 		wiretype = WireTrue
 	}
@@ -196,6 +196,7 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 	}
 
 	polorizer.wb.write(rb.wire, rb.data)
+
 	return nil
 }
 
@@ -351,6 +352,7 @@ func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(array)
+
 	return nil
 }
 
@@ -367,12 +369,13 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 		}
 
 		polorizer.PolorizeDocument(doc)
+
 		return nil
 	}
 
 	// Sort the map keys
 	keys := value.MapKeys()
-	sort.Slice(keys, sorter(keys))
+	sort.Slice(keys, MapSorter(keys))
 
 	// Create a new polorizer for the map elements
 	mapping := NewPolorizer(inheritCfg(polorizer.cfg))
@@ -389,6 +392,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(mapping)
+
 	return nil
 }
 
@@ -405,6 +409,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 
 		// Flatten the document into the encoding buffer
 		polorizer.PolorizeDocument(doc)
+
 		return nil
 	}
 
@@ -428,6 +433,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(structure)
+
 	return nil
 }
 
@@ -437,11 +443,11 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 	// Call the Polorize method of Polorizable (returns a Polorizer and an error)
 	outputs := value.MethodByName("Polorize").Call([]reflect.Value{})
 	if !outputs[1].IsNil() {
-		return outputs[1].Interface().(error)
+		return outputs[1].Interface().(error) //nolint:forcetypeassert
 	}
 
 	// Polorize the inner polorizer
-	inner := outputs[0].Interface().(*Polorizer)
+	inner, _ := outputs[0].Interface().(*Polorizer)
 	polorizer.polorizeInner(inner)
 
 	return nil
@@ -470,7 +476,6 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// Check the kind of value
 	switch kind := value.Kind(); kind {
-
 	// Pointer
 	case reflect.Ptr:
 		return polorizer.polorizeValue(value.Elem())
@@ -546,8 +551,9 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 		// Check if value is a polo.Document and encode as such
 		if value.Type() == reflect.TypeOf(Document{}) {
-			document := value.Interface().(Document)
+			document, _ := value.Interface().(Document)
 			polorizer.PolorizeDocument(document)
+
 			return nil
 		}
 
@@ -559,6 +565,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		if value.Type() == reflect.TypeOf(*big.NewInt(0)) {
 			bignumber, _ := value.Interface().(big.Int)
 			polorizer.PolorizeBigInt(&bignumber)
+
 			return nil
 		}
 
@@ -570,126 +577,4 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	}
 
 	return nil
-}
-
-// sorter is used by the sort package to sort a slice of reflect.Value objects.
-// Assumes that the reflect.Value objects can only be types which are comparable
-// i.e, can be used as a map key. (will panic otherwise)
-func sorter(keys []reflect.Value) func(int, int) bool {
-	return func(i int, j int) bool {
-		a, b := keys[i], keys[j]
-		if a.Kind() == reflect.Interface {
-			a, b = a.Elem(), b.Elem()
-		}
-
-		switch a.Kind() {
-		case reflect.Bool:
-			return b.Bool()
-
-		case reflect.String:
-			return a.String() < b.String()
-
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			return a.Int() < b.Int()
-
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			return a.Uint() < b.Uint()
-
-		case reflect.Float32, reflect.Float64:
-			return a.Float() < b.Float()
-
-		case reflect.Array:
-			if a.Len() != b.Len() {
-				panic("array length must equal")
-			}
-
-			for i := 0; i < a.Len(); i++ {
-				result := compare(a.Index(i), b.Index(i))
-				if result == 0 {
-					continue
-				}
-
-				return result < 0
-			}
-		}
-
-		panic("unsupported key compare")
-	}
-}
-
-// compare returns an integer representing the comparison between two reflect.Value objects.
-// Assumes that a and b can only have a type that is comparable. (will panic otherwise).
-// Returns 1 (a > b); 0 (a == b); -1 (a < b)
-func compare(a, b reflect.Value) int {
-	if a.Kind() == reflect.Interface {
-		a, b = a.Elem(), b.Elem()
-	}
-
-	switch a.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		av, bv := a.Int(), b.Int()
-
-		switch {
-		case av < bv:
-			return -1
-		case av == bv:
-			return 0
-		case av > bv:
-			return 1
-		}
-
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		av, bv := a.Uint(), b.Uint()
-
-		switch {
-		case av < bv:
-			return -1
-		case av == bv:
-			return 0
-		case av > bv:
-			return 1
-		}
-
-	case reflect.Float32, reflect.Float64:
-		av, bv := a.Float(), b.Float()
-
-		switch {
-		case av < bv:
-			return -1
-		case av == bv:
-			return 0
-		case av > bv:
-			return 1
-		}
-
-	case reflect.String:
-		av, bv := a.String(), b.String()
-
-		switch {
-		case av < bv:
-			return -1
-		case av == bv:
-			return 0
-		case av > bv:
-			return 1
-		}
-
-	case reflect.Array:
-		if a.Len() != b.Len() {
-			panic("array length must equal")
-		}
-
-		for i := 0; i < a.Len(); i++ {
-			result := compare(a.Index(i), b.Index(i))
-			if result == 0 {
-				continue
-			}
-
-			return result
-		}
-
-		return 0
-	}
-
-	panic("unsupported key compare")
 }

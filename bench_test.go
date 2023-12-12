@@ -82,7 +82,6 @@ func BenchmarkEncoding(b *testing.B) {
 			})
 		})
 	})
-
 }
 
 func BenchmarkDocument(b *testing.B) {
