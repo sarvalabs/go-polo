@@ -88,7 +88,7 @@ func (polorizer *Polorizer) PolorizeString(value string) {
 // PolorizeBool encodes a bool value into the Polorizer.
 // Encodes the boolean as either WireTrue or WireFalse, depending on its value.
 func (polorizer *Polorizer) PolorizeBool(value bool) {
-	var wiretype = WireFalse
+	wiretype := WireFalse
 	if value {
 		wiretype = WireTrue
 	}
@@ -196,6 +196,7 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 	}
 
 	polorizer.wb.write(rb.wire, rb.data)
+
 	return nil
 }
 
@@ -351,6 +352,7 @@ func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(array)
+
 	return nil
 }
 
@@ -367,6 +369,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 		}
 
 		polorizer.PolorizeDocument(doc)
+
 		return nil
 	}
 
@@ -389,6 +392,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(mapping)
+
 	return nil
 }
 
@@ -405,6 +409,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 
 		// Flatten the document into the encoding buffer
 		polorizer.PolorizeDocument(doc)
+
 		return nil
 	}
 
@@ -428,6 +433,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 	}
 
 	polorizer.PolorizePacked(structure)
+
 	return nil
 }
 
@@ -437,11 +443,11 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 	// Call the Polorize method of Polorizable (returns a Polorizer and an error)
 	outputs := value.MethodByName("Polorize").Call([]reflect.Value{})
 	if !outputs[1].IsNil() {
-		return outputs[1].Interface().(error)
+		return outputs[1].Interface().(error) //nolint:forcetypeassert
 	}
 
 	// Polorize the inner polorizer
-	inner := outputs[0].Interface().(*Polorizer)
+	inner, _ := outputs[0].Interface().(*Polorizer)
 	polorizer.polorizeInner(inner)
 
 	return nil
@@ -470,7 +476,6 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// Check the kind of value
 	switch kind := value.Kind(); kind {
-
 	// Pointer
 	case reflect.Ptr:
 		return polorizer.polorizeValue(value.Elem())
@@ -546,8 +551,9 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 		// Check if value is a polo.Document and encode as such
 		if value.Type() == reflect.TypeOf(Document{}) {
-			document := value.Interface().(Document)
+			document, _ := value.Interface().(Document)
 			polorizer.PolorizeDocument(document)
+
 			return nil
 		}
 
@@ -559,6 +565,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		if value.Type() == reflect.TypeOf(*big.NewInt(0)) {
 			bignumber, _ := value.Interface().(big.Int)
 			polorizer.PolorizeBigInt(&bignumber)
+
 			return nil
 		}
 

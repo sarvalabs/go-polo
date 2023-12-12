@@ -59,6 +59,7 @@ func (doc Document) Size() int {
 func (doc Document) Bytes() []byte {
 	polorizer := NewPolorizer()
 	polorizer.PolorizeDocument(doc)
+
 	return polorizer.Bytes()
 }
 
@@ -104,5 +105,6 @@ func (doc Document) Set(key string, object any, options ...EncodingOptions) erro
 
 	// Insert the wire data for the key
 	doc.SetRaw(key, data)
+
 	return nil
 }

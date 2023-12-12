@@ -11,6 +11,8 @@ import (
 
 // ExamplePolorizer is an example for using the Polorizer to encode the fields of a Fruit object
 // using a Polorizer which allows sequential encoding of data into a write-only buffer
+//
+//nolint:lll
 func ExamplePolorizer() {
 	// Create a Fruit object
 	orange := &Fruit{"orange", 300, []string{"tangerine", "mandarin"}}
@@ -138,6 +140,7 @@ func TestPolorizer_PolorizeFloat32(t *testing.T) {
 	assert.Equal(t, []byte{14, 47, 7, 71, 66, 246, 233, 121, 194, 199, 250, 225}, polorizer.Packed())
 }
 
+//nolint:lll
 func TestPolorizer_PolorizeFloat64(t *testing.T) {
 	polorizer := NewPolorizer()
 
@@ -199,6 +202,7 @@ func TestPolorizer_PolorizeAny(t *testing.T) {
 	assert.Equal(t, []byte{14, 63, 6, 48, 48, 98, 111, 111}, polorizer.Packed())
 }
 
+//nolint:lll
 func TestPolorizer_PolorizeDocument(t *testing.T) {
 	document := make(Document)
 	_ = document.Set("far", 123)
