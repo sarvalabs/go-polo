@@ -375,7 +375,7 @@ func (rb readbuffer) decodeDocument() (Document, error) {
 	switch rb.wire {
 	case WireDoc:
 		// Get the next element as a pack depolorizer with the slice elements
-		pack, err := newLoadDepolorizer(rb)
+		pack, err := newLoadDepolorizer(rb, nil)
 		if err != nil {
 			return nil, err
 		}
