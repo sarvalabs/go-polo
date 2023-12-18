@@ -44,15 +44,19 @@ func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, erro
 
 // newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
 // The readbuffer is converted into a packbuffer and the returned Depolorizer is created in packed mode.
-func newLoadDepolorizer(data readbuffer) (*Depolorizer, error) {
+func newLoadDepolorizer(data readbuffer, config *wireConfig) (*Depolorizer, error) {
 	// Convert the element into a packbuffer
 	pack, err := data.unpack()
 	if err != nil {
 		return nil, err
 	}
 
+	if config == nil {
+		config = defaultWireConfig()
+	}
+
 	// Create a new Depolorizer in packed mode
-	return &Depolorizer{pack: pack, packed: true}, nil
+	return &Depolorizer{pack: pack, packed: true, cfg: *config}, nil
 }
 
 // Done returns whether all elements in the Depolorizer have been read.
@@ -285,7 +289,7 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 
 	switch data.wire {
 	case WirePack, WireDoc:
-		return newLoadDepolorizer(data)
+		return newLoadDepolorizer(data, &depolorizer.cfg)
 
 	case WireNull:
 		return nil, ErrNullPack
@@ -343,7 +347,7 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the slice elements
-		pack, err := newLoadDepolorizer(data)
+		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -397,7 +401,7 @@ func (depolorizer *Depolorizer) depolorizeArrayValue(target reflect.Type) (refle
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the array elements
-		pack, err := newLoadDepolorizer(data)
+		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -454,7 +458,7 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the map elements
-		pack, err := newLoadDepolorizer(data)
+		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -554,7 +558,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the struct field elements
-		pack, err := newLoadDepolorizer(data)
+		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
 		if err != nil {
 			return zeroVal, err
 		}
