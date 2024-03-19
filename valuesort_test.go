@@ -7,13 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMapSorter_Panics(t *testing.T) {
+func TestValueSort_Panics(t *testing.T) {
 	t.Run("Array Length", func(t *testing.T) {
 		a := [4]string{}
 		b := [3]string{}
 
 		assert.PanicsWithValue(t, "array length must equal", func() {
-			MapSorter([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
+			ValueSort([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
 		})
 	})
 
@@ -22,18 +22,18 @@ func TestMapSorter_Panics(t *testing.T) {
 		b := make([]string, 4)
 
 		assert.PanicsWithValue(t, "unsupported key compare", func() {
-			MapSorter([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
+			ValueSort([]reflect.Value{reflect.ValueOf(a), reflect.ValueOf(b)})(0, 1)
 		})
 	})
 }
 
-func TestMapCompare_Panics(t *testing.T) {
+func TestValueCmp_Panics(t *testing.T) {
 	t.Run("Array Length", func(t *testing.T) {
 		a := [4]string{}
 		b := [3]string{}
 
 		assert.PanicsWithValue(t, "array length must equal", func() {
-			MapCompare(reflect.ValueOf(a), reflect.ValueOf(b))
+			ValueCmp(reflect.ValueOf(a), reflect.ValueOf(b))
 		})
 	})
 
@@ -42,7 +42,7 @@ func TestMapCompare_Panics(t *testing.T) {
 		b := make([]string, 4)
 
 		assert.PanicsWithValue(t, "unsupported key compare", func() {
-			MapCompare(reflect.ValueOf(a), reflect.ValueOf(b))
+			ValueCmp(reflect.ValueOf(a), reflect.ValueOf(b))
 		})
 	})
 }

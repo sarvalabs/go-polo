@@ -2,55 +2,59 @@ package polo
 
 import "reflect"
 
-// MapSorter is used by the sort package to sort a slice of reflect.Value objects.
+// ValueSort is used by the sort package to sort a slice of reflect.Value objects.
 // Assumes that the reflect.Value objects can only be types which are comparable
 // i.e, can be used as a map key. (will panic otherwise)
-func MapSorter(keys []reflect.Value) func(int, int) bool {
+func ValueSort(keys []reflect.Value) func(int, int) bool {
 	return func(i int, j int) bool {
 		a, b := keys[i], keys[j]
 		if a.Kind() == reflect.Interface {
 			a, b = a.Elem(), b.Elem()
 		}
 
-		switch a.Kind() {
-		case reflect.Bool:
-			return b.Bool()
-
-		case reflect.String:
-			return a.String() < b.String()
-
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			return a.Int() < b.Int()
-
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			return a.Uint() < b.Uint()
-
-		case reflect.Float32, reflect.Float64:
-			return a.Float() < b.Float()
-
-		case reflect.Array:
-			if a.Len() != b.Len() {
-				panic("array length must equal")
-			}
-
-			for i := 0; i < a.Len(); i++ {
-				result := MapCompare(a.Index(i), b.Index(i))
-				if result == 0 {
-					continue
-				}
-
-				return result < 0
-			}
-		}
-
-		panic("unsupported key compare")
+		return ValueLt(a, b)
 	}
 }
 
-// MapCompare returns an integer representing the comparison between two reflect.Value objects.
+func ValueLt(a, b reflect.Value) bool {
+	switch a.Kind() {
+	case reflect.Bool:
+		return b.Bool()
+
+	case reflect.String:
+		return a.String() < b.String()
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return a.Int() < b.Int()
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return a.Uint() < b.Uint()
+
+	case reflect.Float32, reflect.Float64:
+		return a.Float() < b.Float()
+
+	case reflect.Array:
+		if a.Len() != b.Len() {
+			panic("array length must equal")
+		}
+
+		for i := 0; i < a.Len(); i++ {
+			result := ValueCmp(a.Index(i), b.Index(i))
+			if result == 0 {
+				continue
+			}
+
+			return result < 0
+		}
+	}
+
+	panic("unsupported key compare")
+}
+
+// ValueCmp returns an integer representing the comparison between two reflect.Value objects.
 // Assumes that a and b can only have a type that is comparable. (will panic otherwise).
 // Returns 1 (a > b); 0 (a == b); -1 (a < b)
-func MapCompare(a, b reflect.Value) int {
+func ValueCmp(a, b reflect.Value) int {
 	if a.Kind() == reflect.Interface {
 		a, b = a.Elem(), b.Elem()
 	}
@@ -110,7 +114,7 @@ func MapCompare(a, b reflect.Value) int {
 		}
 
 		for i := 0; i < a.Len(); i++ {
-			result := MapCompare(a.Index(i), b.Index(i))
+			result := ValueCmp(a.Index(i), b.Index(i))
 			if result == 0 {
 				continue
 			}
