@@ -375,7 +375,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 
 	// Sort the map keys
 	keys := value.MapKeys()
-	sort.Slice(keys, MapSorter(keys))
+	sort.Slice(keys, ValueSort(keys))
 
 	// Create a new polorizer for the map elements
 	mapping := NewPolorizer(inheritCfg(polorizer.cfg))
