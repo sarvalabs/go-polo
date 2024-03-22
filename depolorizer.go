@@ -322,6 +322,11 @@ func (depolorizer *Depolorizer) depolorizeByteArrayValue(target reflect.Type) (r
 		return zeroVal, err
 	}
 
+	// If data is nil, return zero value
+	if len(bytes) == 0 {
+		return zeroVal, nil
+	}
+
 	// Check array length
 	if target.Len() != len(bytes) {
 		return zeroVal, IncompatibleWireError{"mismatched data length for byte array"}
