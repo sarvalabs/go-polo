@@ -2,6 +2,10 @@ module github.com/sarvalabs/go-polo
 
 go 1.20
 
+retract (
+	v0.4.4 // published incorrectly 
+)
+
 require (
 	github.com/google/gofuzz v1.2.0
 	github.com/stretchr/testify v1.8.4
