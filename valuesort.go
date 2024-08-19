@@ -16,6 +16,7 @@ func ValueSort(keys []reflect.Value) func(int, int) bool {
 	}
 }
 
+// ValueLt is returns a < b, for two reflected values a & b
 func ValueLt(a, b reflect.Value) bool {
 	switch a.Kind() {
 	case reflect.Bool:
@@ -126,4 +127,75 @@ func ValueCmp(a, b reflect.Value) int {
 	}
 
 	panic("unsupported key compare")
+}
+
+// Key is an indexed reflect value. Preserves the original index of key.
+// Can be used in conjunction with the KeySort function to acquire sorted order of reflected value.
+type Key struct {
+	idx int // represents the original index before sorting
+	val reflect.Value
+}
+
+// NewKey creates a new value for the given index and value.
+// The given value is reflected to use in Key.
+func NewKey(idx int, val any) Key {
+	return Key{idx: idx, val: reflect.ValueOf(val)}
+}
+
+// Index returns the index of the key
+func (key Key) Index() int {
+	return key.idx
+}
+
+// KeySort accepts a slice of Key values and a channel to return them on.
+// They are returned in sorted order and are merge sorted recursively.
+func KeySort(keys []Key, ch chan Key) {
+	defer close(ch)
+
+	// If there are no elements, return
+	if len(keys) == 0 {
+		return
+	}
+
+	// If there is only 1 element, return it
+	if len(keys) == 1 {
+		ch <- keys[0]
+		return
+	}
+
+	// Determine the midpoint
+	mid := len(keys) / 2
+
+	// Start sorting the left side
+	left := make(chan Key)
+	go KeySort(keys[:mid], left)
+	// Start sorting the right side
+	right := make(chan Key)
+	go KeySort(keys[mid:], right)
+
+	// Get initial values from the both channels
+	lv, lok := <-left
+	rv, rok := <-right
+
+	// Iterate until both sides have returned all values
+	for lok || rok {
+		switch {
+		case lok && rok:
+			if ValueLt(lv.val, rv.val) {
+				ch <- lv
+				lv, lok = <-left
+			} else {
+				ch <- rv
+				rv, rok = <-right
+			}
+
+		case lok && !rok:
+			ch <- lv
+			lv, lok = <-left
+
+		case !lok && rok:
+			ch <- rv
+			rv, rok = <-right
+		}
+	}
 }
