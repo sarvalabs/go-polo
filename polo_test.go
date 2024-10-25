@@ -114,12 +114,10 @@ func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
 	}
 
 	// Decode the Cost field as a string
-	Cost, err := depolorizer.DepolorizeInt()
+	fruit.Cost, err = depolorizer.DepolorizeInt()
 	if err != nil {
 		log.Fatalln("invalid field 'Cost':", err)
 	}
-
-	fruit.Cost = int(Cost)
 
 	// Decode a new Depolorizer to deserialize the Alias field (slice)
 	aliases, err := depolorizer.DepolorizePacked()
@@ -1672,13 +1670,10 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 		return err
 	}
 
-	// todo: cleanup with extended decode methods
-	B, err := depolorizer.DepolorizeInt()
+	object.B, err = depolorizer.DepolorizeInt32()
 	if err != nil {
 		return err
 	}
-
-	object.B = int32(B)
 
 	if depolorizer.IsNull() {
 		object.C = nil

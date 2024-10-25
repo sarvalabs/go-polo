@@ -208,7 +208,15 @@ func (depolorizer *Depolorizer) DepolorizeBool() (bool, error) {
 // DepolorizeUint attempts to decode an unsigned integer value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WirePosInt.
 // Returns 0 if the element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeUint() (uint64, error) {
+func (depolorizer *Depolorizer) DepolorizeUint() (uint, error) {
+	value, err := depolorizer.DepolorizeUint64()
+	return uint(value), err // nolint:nlreturn
+}
+
+// DepolorizeUint64 attempts to decode a 64-bit unsigned integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeUint64() (uint64, error) {
 	// Read the next element
 	data, err := depolorizer.read()
 	if err != nil {
@@ -218,10 +226,57 @@ func (depolorizer *Depolorizer) DepolorizeUint() (uint64, error) {
 	return allowNilValue(data.decodeUint64())
 }
 
-// DepolorizeInt attempts to decode a signed integer value from the Depolorizer, consuming one wire element.
+// DepolorizeUint32 attempts to decode a 32-bit unsigned integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeUint32() (uint32, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeUint32())
+}
+
+// DepolorizeUint16 attempts to decode a 16-bit unsigned integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeUint16() (uint16, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeUint16())
+}
+
+// DepolorizeUint8 attempts to decode an 8-bit unsigned integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeUint8() (uint8, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeUint8())
+}
+
+// DepolorizeInt attempts to decode an int value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
 // Returns 0 if the element is a WireNull.
-func (depolorizer *Depolorizer) DepolorizeInt() (int64, error) {
+func (depolorizer *Depolorizer) DepolorizeInt() (int, error) {
+	value, err := depolorizer.DepolorizeInt64()
+	return int(value), err // nolint:nlreturn
+}
+
+// DepolorizeInt64 attempts to decode a 64-bit signed integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeInt64() (int64, error) {
 	// Read the next element
 	data, err := depolorizer.read()
 	if err != nil {
@@ -229,6 +284,45 @@ func (depolorizer *Depolorizer) DepolorizeInt() (int64, error) {
 	}
 
 	return allowNilValue(data.decodeInt64())
+}
+
+// DepolorizeInt32 attempts to decode a 32-bit signed integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeInt32() (int32, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeInt32())
+}
+
+// DepolorizeInt16 attempts to decode a 16-bit signed integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeInt16() (int16, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeInt16())
+}
+
+// DepolorizeInt8 attempts to decode an 8-bit signed integer from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WirePosInt or WireNegInt.
+// Returns 0 if the element is a WireNull.
+func (depolorizer *Depolorizer) DepolorizeInt8() (int8, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return 0, err
+	}
+
+	return allowNilValue(data.decodeInt8())
 }
 
 // DepolorizeFloat32 attempts to decode a single point precision float from the Depolorizer, consuming one wire element.

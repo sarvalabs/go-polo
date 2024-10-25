@@ -39,7 +39,7 @@ func ExampleDepolorizer() {
 	}
 
 	// Decode the Cost field as a string
-	Cost, err := depolorizer.DepolorizeInt()
+	Cost, err := depolorizer.DepolorizeInt64()
 	if err != nil {
 		log.Fatalln("invalid field 'Cost':", err)
 	}
@@ -248,17 +248,17 @@ func TestDepolorizer_DepolorizeUint(t *testing.T) {
 
 	var value uint64
 
-	value, err = depolorizer.DepolorizeUint()
+	value, err = depolorizer.DepolorizeUint64()
 	assert.Nil(t, err)
 	assert.Equal(t, uint64(300), value)
 	assert.False(t, depolorizer.Done())
 
-	value, err = depolorizer.DepolorizeUint()
+	value, err = depolorizer.DepolorizeUint64()
 	assert.Nil(t, err)
 	assert.Equal(t, uint64(250), value)
 	assert.True(t, depolorizer.Done())
 
-	_, err = depolorizer.DepolorizeUint()
+	_, err = depolorizer.DepolorizeUint64()
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
@@ -271,17 +271,17 @@ func TestDepolorizer_DepolorizeInt(t *testing.T) {
 
 	var value int64
 
-	value, err = depolorizer.DepolorizeInt()
+	value, err = depolorizer.DepolorizeInt64()
 	assert.Nil(t, err)
 	assert.Equal(t, int64(300), value)
 	assert.False(t, depolorizer.Done())
 
-	value, err = depolorizer.DepolorizeInt()
+	value, err = depolorizer.DepolorizeInt64()
 	assert.Nil(t, err)
 	assert.Equal(t, int64(-250), value)
 	assert.True(t, depolorizer.Done())
 
-	_, err = depolorizer.DepolorizeInt()
+	_, err = depolorizer.DepolorizeInt64()
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
@@ -348,7 +348,7 @@ func TestDepolorizer_DepolorizePacked(t *testing.T) {
 		depolorizer, err := NewDepolorizer([]byte{3, 1, 44})
 		require.Nil(t, err)
 
-		_, err = depolorizer.DepolorizeInt()
+		_, err = depolorizer.DepolorizeInt64()
 		assert.Nil(t, err)
 		assert.True(t, depolorizer.Done())
 
