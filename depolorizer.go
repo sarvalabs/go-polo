@@ -210,7 +210,7 @@ func (depolorizer *Depolorizer) DepolorizeBool() (bool, error) {
 // Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeUint() (uint, error) {
 	value, err := depolorizer.DepolorizeUint64()
-	return uint(value), err // nolint:nlreturn
+	return uint(value), err //nolint:nlreturn
 }
 
 // DepolorizeUint64 attempts to decode a 64-bit unsigned integer from the Depolorizer, consuming one wire element.
@@ -270,7 +270,7 @@ func (depolorizer *Depolorizer) DepolorizeUint8() (uint8, error) {
 // Returns 0 if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizeInt() (int, error) {
 	value, err := depolorizer.DepolorizeInt64()
-	return int(value), err // nolint:nlreturn
+	return int(value), err //nolint:nlreturn
 }
 
 // DepolorizeInt64 attempts to decode a 64-bit signed integer from the Depolorizer, consuming one wire element.

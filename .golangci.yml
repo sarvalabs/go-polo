@@ -10,7 +10,6 @@ linters:
   enable:
     - dogsled
     - dupl
-    - depguard
     - errname
     - errorlint
     - forcetypeassert

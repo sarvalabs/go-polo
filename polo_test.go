@@ -1049,8 +1049,8 @@ func TestEmpty(t *testing.T) {
 func TestNullObject(t *testing.T) {
 	t.Run("Slice", func(t *testing.T) {
 		var x []string
-		require.Nil(t, x)
 
+		require.Nil(t, x)
 		wire, err := Polorize(x)
 		assert.Nil(t, err)
 		assert.Equal(t, wire, []byte{0})
@@ -1058,8 +1058,8 @@ func TestNullObject(t *testing.T) {
 
 	t.Run("Map", func(t *testing.T) {
 		var x map[string]uint64
-		require.Nil(t, x)
 
+		require.Nil(t, x)
 		wire, err := Polorize(x)
 		assert.Nil(t, err)
 		assert.Equal(t, wire, []byte{0})
@@ -1067,8 +1067,8 @@ func TestNullObject(t *testing.T) {
 
 	t.Run("Struct", func(t *testing.T) {
 		var x *IntegerObject
-		require.Nil(t, x)
 
+		require.Nil(t, x)
 		wire, err := Polorize(x)
 		assert.Nil(t, err)
 		assert.Equal(t, wire, []byte{0})
@@ -1076,8 +1076,8 @@ func TestNullObject(t *testing.T) {
 
 	t.Run("Any", func(t *testing.T) {
 		var x any
-		require.Nil(t, x)
 
+		require.Nil(t, x)
 		_, err := Polorize(x)
 		assert.EqualError(t, err, "incompatible value error: unsupported type: cannot encode untyped nil")
 	})
@@ -1141,6 +1141,7 @@ func TestNullWire(t *testing.T) {
 		err = Depolorize(x, wire)
 
 		var nilslc []string
+
 		require.Nil(t, err)
 		assert.Equal(t, nilslc, *x)
 	})
@@ -1158,6 +1159,7 @@ func TestNullWire(t *testing.T) {
 		err = Depolorize(x, wire)
 
 		var nilmap map[string]string
+
 		require.Nil(t, err)
 		assert.Equal(t, nilmap, *x)
 	})
@@ -1639,7 +1641,9 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 		}
 
 		sort.Strings(keys)
+
 		D := NewPolorizer()
+
 		for _, key := range keys {
 			D.PolorizeString(key)
 			D.PolorizeString(object.D[key])
@@ -1732,6 +1736,7 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 func TestCustomEncoding(t *testing.T) {
 	t.Run("CustomEncodeObject", func(t *testing.T) {
 		f := fuzz.New()
+
 		var x CustomEncodeObject
 
 		for i := 0; i < 10000; i++ {

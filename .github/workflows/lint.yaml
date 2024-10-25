@@ -24,7 +24,7 @@ jobs:
       - name: Run Golang CI Lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.52.2
+          version: 1.60.1
           skip-cache: true
           skip-pkg-cache: true
           skip-build-cache: true
