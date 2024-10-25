@@ -1623,20 +1623,18 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 	polorizer.PolorizeString(object.A)
 	polorizer.PolorizeInt(int64(object.B))
 
-	if object.C == nil {
-		polorizer.PolorizeNull()
-	} else {
+	if object.C != nil {
 		C := NewPolorizer()
 		for _, elem := range object.C {
 			C.PolorizeString(elem)
 		}
 
 		polorizer.PolorizePacked(C)
+	} else {
+		polorizer.PolorizeNull()
 	}
 
-	if object.D == nil {
-		polorizer.PolorizeNull()
-	} else {
+	if object.D != nil {
 		keys := make([]string, 0, len(object.D))
 		for key := range object.D {
 			keys = append(keys, key)
@@ -1650,6 +1648,8 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 		}
 
 		polorizer.PolorizePacked(D)
+	} else {
+		polorizer.PolorizeNull()
 	}
 
 	polorizer.PolorizeFloat64(object.E)
@@ -1658,10 +1658,12 @@ func (object CustomEncodeObject) Polorize() (*Polorizer, error) {
 }
 
 func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err error) {
-	depolorizer, err = depolorizer.DepolorizePacked()
-	if errors.Is(err, ErrNullPack) {
+	if depolorizer.IsNull() {
 		return nil
-	} else if err != nil {
+	}
+
+	depolorizer, err = depolorizer.Unpacked()
+	if err != nil {
 		return err
 	}
 
@@ -1670,6 +1672,7 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 		return err
 	}
 
+	// todo: cleanup with extended decode methods
 	B, err := depolorizer.DepolorizeInt()
 	if err != nil {
 		return err
@@ -1677,14 +1680,15 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 
 	object.B = int32(B)
 
-	c, err := depolorizer.DepolorizePacked()
-
-	switch {
-	case errors.Is(err, ErrNullPack):
+	if depolorizer.IsNull() {
 		object.C = nil
-	case err != nil:
-		return err
-	default:
+		_ = depolorizer.DepolorizeNull()
+	} else {
+		c, err := depolorizer.DepolorizePacked()
+		if err != nil {
+			return err
+		}
+
 		object.C = make([]string, 0, 5)
 
 		for !c.Done() {
@@ -1697,14 +1701,15 @@ func (object *CustomEncodeObject) Depolorize(depolorizer *Depolorizer) (err erro
 		}
 	}
 
-	d, err := depolorizer.DepolorizePacked()
-
-	switch {
-	case errors.Is(err, ErrNullPack):
+	if depolorizer.IsNull() {
 		object.D = nil
-	case err != nil:
-		return err
-	default:
+		_ = depolorizer.DepolorizeNull()
+	} else {
+		d, err := depolorizer.DepolorizePacked()
+		if err != nil {
+			return err
+		}
+
 		object.D = make(map[string]string)
 
 		for !d.Done() {

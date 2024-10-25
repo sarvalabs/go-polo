@@ -59,6 +59,15 @@ func newLoadDepolorizer(data readbuffer, config *wireConfig) (*Depolorizer, erro
 	return &Depolorizer{pack: pack, packed: true, cfg: *config}, nil
 }
 
+// Unpacked attempts to unpack a Depolorizer that contains a WirePack or WireDoc element.
+// A new Depolorizer is returned with the unpacked wire and the original Depolorizer consumes one wire element.
+// Returns an error if there are no elements left or if the element is not a WirePack or WireDoc.
+//
+// note: this method is a wrapper around DepolorizePacked for brevity and aesthetics.
+func (depolorizer *Depolorizer) Unpacked() (*Depolorizer, error) {
+	return depolorizer.DepolorizePacked()
+}
+
 // Done returns whether all elements in the Depolorizer have been read.
 func (depolorizer *Depolorizer) Done() bool {
 	// Check if packbuffer is done if in packed mode
@@ -68,6 +77,28 @@ func (depolorizer *Depolorizer) Done() bool {
 
 	// Return flag for non-pack data
 	return depolorizer.done
+}
+
+// IsNull returns whether the next element in the Depolorizer is a WireNull without
+// consuming it from the buffer. False if there are no elements left in the Depolorizer.
+//
+// Use DepolorizeNull to consume the WireNull element if further elements are to be read.
+func (depolorizer *Depolorizer) IsNull() bool {
+	// Check if the Depolorizer is in packed mode
+	if !depolorizer.packed {
+		// Return the nullity of the atomic buffer
+		return depolorizer.data.wire.IsNull()
+	}
+
+	// Peek the next element from the packbuffer.
+	// Errors if there are no elements left
+	peek, ok := depolorizer.pack.peek()
+	if !ok {
+		return false
+	}
+
+	// Return the nullity of the peeked element
+	return peek.IsNull()
 }
 
 // Depolorize decodes a value from the Depolorizer.
@@ -278,8 +309,8 @@ func (depolorizer *Depolorizer) DepolorizeRaw() (Raw, error) {
 }
 
 // DepolorizePacked attempts to decode another Depolorizer from the Depolorizer, consuming one wire element.
+// A new Depolorizer is returned with the unpacked wire if the element is WirePack or WireDoc.
 // Returns an error if there are no elements left or if the element is not WirePack or WireDoc.
-// Returns a ErrNullPack if the element is a WireNull.
 func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 	// Read the next element
 	data, err := depolorizer.read()
@@ -291,11 +322,8 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 	case WirePack, WireDoc:
 		return newLoadDepolorizer(data, &depolorizer.cfg)
 
-	case WireNull:
-		return nil, ErrNullPack
-
 	default:
-		return nil, IncompatibleWireType(data.wire, WireNull, WirePack, WireDoc)
+		return nil, IncompatibleWireType(data.wire, WirePack, WireDoc)
 	}
 }
 

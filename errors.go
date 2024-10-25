@@ -15,8 +15,6 @@ var (
 	// It acts a signal for error and value handlers.
 	errNilValue = errors.New("nil value")
 
-	// ErrNullPack is an error for when a WireNull is attempted to be converted to a Depolorizer
-	ErrNullPack = errors.New("null pack element")
 	// ErrObjectNotPtr is an error for when a non pointer object is passed to the Depolorize function
 	ErrObjectNotPtr = errors.New("object not a pointer")
 	// ErrObjectNotSettable is an error for when a non-settable pointer is passed to the Depolorize function

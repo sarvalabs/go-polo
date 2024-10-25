@@ -380,7 +380,7 @@ func TestDepolorizer_DepolorizePacked(t *testing.T) {
 		require.Nil(t, err)
 
 		_, err = depolorizer.DepolorizePacked()
-		assert.EqualError(t, err, ErrNullPack.Error())
+		assert.EqualError(t, err, "incompatible wire: unexpected wiretype 'null'. expected one of: {pack, document}")
 	})
 
 	t.Run("Incompatible", func(t *testing.T) {
@@ -388,7 +388,7 @@ func TestDepolorizer_DepolorizePacked(t *testing.T) {
 		require.Nil(t, err)
 
 		_, err = depolorizer.DepolorizePacked()
-		assert.EqualError(t, err, "incompatible wire: unexpected wiretype 'posint'. expected one of: {null, pack, document}")
+		assert.EqualError(t, err, "incompatible wire: unexpected wiretype 'posint'. expected one of: {pack, document}")
 	})
 }
 
