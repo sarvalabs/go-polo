@@ -1832,3 +1832,13 @@ func TestPointerAlias(t *testing.T) {
 	object := Object{nil, nil}
 	testSerialization(t, object)
 }
+
+func TestNilByteArray(t *testing.T) {
+	wire := []byte{0}
+
+	var x [10]byte
+
+	err := Depolorize(&x, wire)
+	require.NoError(t, err)
+	require.Equal(t, x, [10]byte{})
+}

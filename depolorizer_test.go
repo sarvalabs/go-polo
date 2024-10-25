@@ -256,6 +256,29 @@ func TestDepolorizer_DepolorizeUint(t *testing.T) {
 	depolorizer, err = depolorizer.DepolorizePacked()
 	require.Nil(t, err)
 
+	var value uint
+
+	value, err = depolorizer.DepolorizeUint()
+	assert.Nil(t, err)
+	assert.Equal(t, uint(300), value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeUint()
+	assert.Nil(t, err)
+	assert.Equal(t, uint(250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeUint()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeUint64(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 35, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
 	var value uint64
 
 	value, err = depolorizer.DepolorizeUint64()
@@ -272,7 +295,94 @@ func TestDepolorizer_DepolorizeUint(t *testing.T) {
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
+func TestDepolorizer_DepolorizeUint32(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 35, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value uint32
+
+	value, err = depolorizer.DepolorizeUint32()
+	assert.Nil(t, err)
+	assert.Equal(t, uint32(300), value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeUint32()
+	assert.Nil(t, err)
+	assert.Equal(t, uint32(250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeUint32()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeUint16(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 35, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value uint16
+
+	value, err = depolorizer.DepolorizeUint16()
+	assert.Nil(t, err)
+	assert.Equal(t, uint16(300), value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeUint16()
+	assert.Nil(t, err)
+	assert.Equal(t, uint16(250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeUint16()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeUint8(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 31, 3, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value uint8
+
+	value, err = depolorizer.DepolorizeUint8()
+	assert.Nil(t, err)
+	assert.Equal(t, uint8(250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeUint8()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
 func TestDepolorizer_DepolorizeInt(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 36, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value int
+
+	value, err = depolorizer.DepolorizeInt()
+	assert.Nil(t, err)
+	assert.Equal(t, 300, value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeInt()
+	assert.Nil(t, err)
+	assert.Equal(t, -250, value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeInt()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeInt64(t *testing.T) {
 	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 36, 1, 44, 250})
 	require.Nil(t, err)
 
@@ -292,6 +402,70 @@ func TestDepolorizer_DepolorizeInt(t *testing.T) {
 	assert.True(t, depolorizer.Done())
 
 	_, err = depolorizer.DepolorizeInt64()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeInt32(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 36, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value int32
+
+	value, err = depolorizer.DepolorizeInt32()
+	assert.Nil(t, err)
+	assert.Equal(t, int32(300), value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeInt32()
+	assert.Nil(t, err)
+	assert.Equal(t, int32(-250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeInt32()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeInt16(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 47, 3, 36, 1, 44, 250})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value int16
+
+	value, err = depolorizer.DepolorizeInt16()
+	assert.Nil(t, err)
+	assert.Equal(t, int16(300), value)
+	assert.False(t, depolorizer.Done())
+
+	value, err = depolorizer.DepolorizeInt16()
+	assert.Nil(t, err)
+	assert.Equal(t, int16(-250), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeInt16()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
+}
+
+func TestDepolorizer_DepolorizeInt8(t *testing.T) {
+	depolorizer, err := NewDepolorizer([]byte{14, 31, 4, 100})
+	require.Nil(t, err)
+
+	depolorizer, err = depolorizer.DepolorizePacked()
+	require.Nil(t, err)
+
+	var value int8
+
+	value, err = depolorizer.DepolorizeInt8()
+	assert.Nil(t, err)
+	assert.Equal(t, int8(-100), value)
+	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeInt8()
 	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
@@ -471,6 +645,36 @@ func TestDepolorizer_ZeroValue(t *testing.T) {
 		err = depolorizer.Depolorize(new(Object))
 		assert.Nil(t, err)
 	})
+}
+
+func TestDepolorizer_IsNull(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     []byte
+		unpack   bool
+		expected bool
+	}{
+		{"NonPacked_Null", []byte{0}, false, true},
+		{"NonPacked_NotNull", []byte{3, 1, 44}, false, false},
+		{"Packed_Null", []byte{14, 31, 0}, true, true},
+		{"Packed_NotNull", []byte{14, 47, 3, 1, 44}, true, false},
+		{"Packed_Empty", []byte{14, 15}, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			depolorizer, err := NewDepolorizer(tt.data)
+			require.Nil(t, err)
+
+			if tt.unpack {
+				depolorizer, err = depolorizer.Unpacked()
+				require.Nil(t, err)
+			}
+
+			isNull := depolorizer.IsNull()
+			assert.Equal(t, tt.expected, isNull)
+		})
+	}
 }
 
 func TestInsufficientWire(t *testing.T) {
