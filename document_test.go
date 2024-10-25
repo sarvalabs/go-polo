@@ -125,36 +125,47 @@ func ExampleDepolorizeDocument_ToStruct() {
 
 func TestDocument_Bytes(t *testing.T) {
 	tests := []struct {
+		name string
 		doc  Document
 		wire []byte
 	}{
-		{Document{}, []byte{13, 15}},
-		{Document{"foo": []byte{6, 1, 0, 1, 0}}, []byte{13, 47, 6, 53, 102, 111, 111, 6, 1, 0, 1, 0}},
+		{"empty doc", Document{}, []byte{13, 15}},
 		{
+			"doc with one key",
+			Document{"foo": []byte{6, 1, 0, 1, 0}},
+			[]byte{13, 47, 6, 53, 102, 111, 111, 6, 1, 0, 1, 0},
+		},
+		{
+			"doc with multiple keys",
 			Document{"foo": []byte{3, 1, 0, 1, 0}, "bar": []byte{6, 2, 1, 2, 1}},
 			[]byte{13, 111, 6, 53, 134, 1, 181, 1, 98, 97, 114, 6, 2, 1, 2, 1, 102, 111, 111, 3, 1, 0, 1, 0},
 		},
 	}
 
 	for _, test := range tests {
-		wire := test.doc.Bytes()
-		assert.Equal(t, test.wire, wire)
+		t.Run(test.name, func(t *testing.T) {
+			wire := test.doc.Bytes()
+			assert.Equal(t, test.wire, wire)
+		})
 	}
 }
 
 func TestDocument_Size(t *testing.T) {
 	tests := []struct {
+		name string
 		doc  Document
 		size int
 	}{
-		{Document{}, 0},
-		{Document{"foo": []byte{1, 0, 1, 0}}, 1},
-		{Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{}}, 2},
+		{"empty doc", Document{}, 0},
+		{"doc with one key", Document{"foo": []byte{1, 0, 1, 0}}, 1},
+		{"doc with multiple keys", Document{"foo": []byte{1, 0, 1, 0}, "bar": []byte{}}, 2},
 	}
 
 	for _, test := range tests {
-		size := test.doc.Size()
-		assert.Equal(t, test.size, size)
+		t.Run(test.name, func(t *testing.T) {
+			size := test.doc.Size()
+			assert.Equal(t, test.size, size)
+		})
 	}
 }
 
@@ -175,9 +186,9 @@ func TestDocument_GetSetRaw(t *testing.T) {
 
 func TestDocument_Set(t *testing.T) {
 	// Create a Document
-	var err error
-
 	doc := make(Document)
+
+	var err error
 
 	// Set some objects into the document and confirm nil errors
 	err = doc.Set("foo", 25)
@@ -195,9 +206,9 @@ func TestDocument_Set(t *testing.T) {
 
 func TestDocument_Get(t *testing.T) {
 	// Create a Document
-	var err error
-
 	doc := make(Document)
+
+	var err error
 
 	// Set some objects into the document and confirm nil errors
 	err = doc.Set("foo", 25)
@@ -252,56 +263,73 @@ func TestPolorizeDocument(t *testing.T) {
 	nilObject := func() *ObjectA { return nil }
 
 	tests := []struct {
+		name   string
 		object any
 		doc    Document
 		bytes  []byte
 		err    string
 	}{
 		{
+			"map with string keys & values",
 			map[string]string{"boo": "far"},
 			Document{"boo": []byte{0x6, 102, 97, 114}},
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 102, 97, 114},
 			"",
 		},
 		{
+			"map with string keys & int values",
 			map[string]int64{"bar": 54, "foo": -89},
 			Document{"bar": []byte{3, 54}, "foo": []byte{4, 89}},
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 97, 114, 3, 54, 102, 111, 111, 4, 89},
 			"",
 		},
 		{
+			"struct with string fields",
 			ObjectA{"foo", "bar"},
 			Document{"A": []byte{0x6, 102, 111, 111}, "B": []byte{0x6, 98, 97, 114}},
 			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
 			"",
 		},
 		{
+			"pointer to struct with string fields",
 			&ObjectA{"foo", "bar"},
 			Document{"A": []byte{0x6, 102, 111, 111}, "B": []byte{0x6, 98, 97, 114}},
 			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
 			"",
 		},
 		{
+			"struct with mixed valid fields",
 			ObjectB{"foo", 64, false, 54.2},
 			Document{"B": []byte{3, 64}, "foo": []byte{1}},
 			[]byte{13, 79, 6, 21, 54, 101, 66, 3, 64, 102, 111, 111, 1},
 			"",
 		},
 		{
+			"map with invalid value",
 			map[string]chan int{"foo": make(chan int)},
 			nil,
 			nil,
 			"could not encode into document: document value could not be encoded for key 'foo': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{
+			"struct with invalid field",
 			ObjectC{make(chan int), "foo"},
 			nil,
 			nil,
 			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
 		},
-		{nilObject(), nil, nil, "could not encode into document: unsupported type: nil pointer"},
-		{nil, nil, nil, "could not encode into document: unsupported type"},
 		{
+			"nil pointer to struct",
+			nilObject(), nil, nil,
+			"could not encode into document: unsupported type: nil pointer",
+		},
+		{
+			"simple nil",
+			nil, nil, nil,
+			"could not encode into document: unsupported type",
+		},
+		{
+			"map with non-string key",
 			map[uint64]uint64{0: 56},
 			nil,
 			nil,
@@ -310,15 +338,17 @@ func TestPolorizeDocument(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		doc, err := PolorizeDocument(test.object)
-		if test.err == "" {
-			assert.Nil(t, err)
-			assert.Equal(t, test.doc, doc)
-			assert.Equal(t, test.bytes, doc.Bytes())
-		} else {
-			assert.EqualError(t, err, test.err)
-			assert.Nil(t, doc)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			doc, err := PolorizeDocument(test.object)
+			if test.err == "" {
+				assert.Nil(t, err)
+				assert.Equal(t, test.doc, doc)
+				assert.Equal(t, test.bytes, doc.Bytes())
+			} else {
+				assert.EqualError(t, err, test.err)
+				assert.Nil(t, doc)
+			}
+		})
 	}
 }
 
@@ -335,30 +365,35 @@ func TestDocument_Encode(t *testing.T) {
 	}
 
 	tests := []struct {
+		name    string
 		object  any
 		options []EncodingOptions
 		wire    []byte
 		err     string
 	}{
 		{
+			"valid struct & DocStructs enabled",
 			ObjectA{A: "foo", B: 300},
 			[]EncodingOptions{DocStructs()},
 			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 3, 1, 44},
 			"",
 		},
 		{
+			"valid string map & DocStringMaps enabled",
 			map[string]string{"foo": "bar", "boo": "far"},
 			[]EncodingOptions{DocStringMaps()},
 			[]byte{13, 95, 6, 53, 118, 165, 1, 98, 111, 111, 6, 102, 97, 114, 102, 111, 111, 6, 98, 97, 114},
 			"",
 		},
 		{
+			"invalid struct & DocStructs enabled",
 			ObjectB{make(chan int), "foo"},
 			[]EncodingOptions{DocStructs()},
 			nil,
 			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
 		},
 		{
+			"invalid string map & DocStringMaps enabled",
 			map[string]chan int{"foo": make(chan int)},
 			[]EncodingOptions{DocStringMaps()},
 			nil,
@@ -367,54 +402,62 @@ func TestDocument_Encode(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		encoded, err := Polorize(test.object, test.options...)
-		if test.err == "" {
-			assert.Nil(t, err)
-			assert.Equal(t, test.wire, encoded)
-		} else {
-			assert.EqualError(t, err, test.err)
-		}
-
-		fmt.Println(encoded)
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := Polorize(test.object, test.options...)
+			if test.err == "" {
+				assert.Nil(t, err)
+				assert.Equal(t, test.wire, encoded)
+			} else {
+				assert.EqualError(t, err, test.err)
+			}
+		})
 	}
 }
 
 func TestDocument_DecodeToDocument(t *testing.T) {
 	tests := []struct {
+		name  string
 		bytes []byte
 		doc   Document
 		err   string
 	}{
 		{
+			"doc with one key",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 102, 97, 114},
 			Document{"boo": []byte{6, 102, 97, 114}},
 			"",
 		},
 		{
+			"doc with multiple integer values",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 97, 114, 3, 54, 102, 111, 111, 3, 89},
 			Document{"bar": []byte{3, 54}, "foo": []byte{3, 89}},
 			"",
 		},
 		{
+			"doc with multiple string values",
 			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 6, 98, 97, 114},
 			Document{"A": []byte{6, 102, 111, 111}, "B": []byte{6, 98, 97, 114}},
 			"",
 		},
 		{
+			"doc with multiple fields",
 			[]byte{13, 79, 6, 21, 54, 101, 66, 3, 64, 102, 111, 111, 1},
 			Document{"B": []byte{3, 64}, "foo": []byte{1}},
 			"",
 		},
 		{
+			"pack wire",
 			[]byte{14, 79, 6, 21, 54, 101, 66, 3, 64, 102, 111, 111, 1},
 			Document{},
 			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}",
 		},
 		{
+			"null wire",
 			[]byte{0},
 			nil, "",
 		},
 		{
+			"empty doc",
 			[]byte{13, 15},
 			Document{},
 			"",
@@ -422,15 +465,17 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		doc := make(Document)
-		err := Depolorize(&doc, test.bytes)
-		assert.Equal(t, test.doc, doc)
+		t.Run(test.name, func(t *testing.T) {
+			doc := make(Document)
+			err := Depolorize(&doc, test.bytes)
+			assert.Equal(t, test.doc, doc)
 
-		if test.err == "" {
-			assert.Nil(t, err)
-		} else {
-			assert.EqualError(t, err, test.err)
-		}
+			if test.err == "" {
+				assert.Nil(t, err)
+			} else {
+				assert.EqualError(t, err, test.err)
+			}
+		})
 	}
 }
 
@@ -450,7 +495,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 		err     string
 	}{
 		{
-			"",
+			"decode to struct with DocStructs enabled",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
 			new(Object),
 			&Object{A: 300},
@@ -458,7 +503,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
+			"decode to struct with DocStructs enabled & extra fields",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
 			new(Object),
 			&Object{A: 54},
@@ -466,7 +511,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
+			"decode to map[string]int with DocStringMaps enabled",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
 			new(map[string]int),
 			&map[string]int{"boo": 300},
@@ -474,7 +519,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
+			"decode to map[string]int with DocStringMaps enabled",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
 			new(map[string]int),
 			&map[string]int{"boo": 54, "foo": 0},
@@ -482,7 +527,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
+			"decode to map[string][]string with DocStringMaps enabled",
 			[]byte{13, 79, 6, 53, 70, 117, 98, 97, 114, 0, 102, 111, 111, 14, 47, 6, 54, 98, 111, 111, 119, 111, 111},
 			new(map[string][]string),
 			&map[string][]string{"foo": {"boo", "woo"}, "bar": nil},
@@ -490,7 +535,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
+			"decode to struct with DocStructs enabled",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
 			new(Object),
 			&Object{A: 54, B: 89},
@@ -498,15 +543,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"",
-			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
-			new(Object),
-			&Object{A: 54, B: 89},
-			[]EncodingOptions{DocStructs()},
-			"",
-		},
-		{
-			"",
+			"decode to struct with DocStructs enabled & extra incompatible fields",
 			[]byte{13, 95, 7, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
 			new(Object),
 			new(Object),
@@ -514,7 +551,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
 		},
 		{
-			"",
+			"decode to struct with DocStructs enabled & malformed fields",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 142},
 			new(Object),
 			new(Object),
@@ -522,7 +559,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"malformed tag: varint terminated prematurely",
 		},
 		{
-			"",
+			"decode to struct with DocStructs enabled & non raw value",
 			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
 			new(Object),
 			new(Object),
@@ -530,7 +567,7 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"incompatible wire: unexpected wiretype 'word'. expected one of: {raw}",
 		},
 		{
-			"",
+			"decode to struct with DocStructs enabled & incompatible field",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 1, 44},
 			new(Object),
 			new(Object),

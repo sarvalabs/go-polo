@@ -71,38 +71,48 @@ func ExampleDepolorizer() {
 
 func TestNewDepolorizer(t *testing.T) {
 	tests := []struct {
+		name string
 		data []byte
 		err  string
 		buf  *Depolorizer
 	}{
 		{
+			"null wire",
 			[]byte{0},
 			"",
 			&Depolorizer{data: readbuffer{WireNull, []byte{}}},
 		},
 		{
+			"posint wire",
 			[]byte{3, 1, 44},
 			"",
 			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}},
 		},
 		{
+			"pack wire",
 			[]byte{14, 47, 3, 35, 1, 44, 250},
 			"",
 			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
 		},
-		{[]byte{175}, "malformed tag: varint terminated prematurely", nil},
+		{
+			"malformed wire",
+			[]byte{175},
+			"malformed tag: varint terminated prematurely",
+			nil,
+		},
 	}
 
 	for _, test := range tests {
-		depolorizer, err := NewDepolorizer(test.data)
-		assert.Equal(t, test.buf, depolorizer)
+		t.Run(test.name, func(t *testing.T) {
+			depolorizer, err := NewDepolorizer(test.data)
+			assert.Equal(t, test.buf, depolorizer)
 
-		if test.err != "" {
-			assert.EqualError(t, err, test.err)
-			continue
-		}
-
-		assert.Nil(t, err)
+			if test.err != "" {
+				assert.EqualError(t, err, test.err)
+			} else {
+				assert.Nil(t, err)
+			}
+		})
 	}
 }
 
@@ -465,34 +475,37 @@ func TestDepolorizer_ZeroValue(t *testing.T) {
 
 func TestInsufficientWire(t *testing.T) {
 	tests := []struct {
-		buffer *Depolorizer
+		name   string
 		object any
+		buffer *Depolorizer
 	}{
-		{&Depolorizer{data: readbuffer{}, done: true}, new(bool)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new([]byte)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(string)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(uint64)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(uint32)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(uint16)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(uint8)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(int64)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(int32)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(int16)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(int8)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(float32)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(float64)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(big.Int)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(Raw)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(Document)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new([]float64)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new([2]string)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(map[string]string)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(IntegerObject)},
-		{&Depolorizer{data: readbuffer{}, done: true}, new(CustomEncodeObject)},
+		{"bool", new(bool), &Depolorizer{data: readbuffer{}, done: true}},
+		{"[]byte", new([]byte), &Depolorizer{data: readbuffer{}, done: true}},
+		{"string", new(string), &Depolorizer{data: readbuffer{}, done: true}},
+		{"uint64", new(uint64), &Depolorizer{data: readbuffer{}, done: true}},
+		{"uint32", new(uint32), &Depolorizer{data: readbuffer{}, done: true}},
+		{"uint16", new(uint16), &Depolorizer{data: readbuffer{}, done: true}},
+		{"uint8", new(uint8), &Depolorizer{data: readbuffer{}, done: true}},
+		{"int64", new(int64), &Depolorizer{data: readbuffer{}, done: true}},
+		{"int32", new(int32), &Depolorizer{data: readbuffer{}, done: true}},
+		{"int16", new(int16), &Depolorizer{data: readbuffer{}, done: true}},
+		{"int8", new(int8), &Depolorizer{data: readbuffer{}, done: true}},
+		{"float32", new(float32), &Depolorizer{data: readbuffer{}, done: true}},
+		{"float64", new(float64), &Depolorizer{data: readbuffer{}, done: true}},
+		{"big.Int", new(big.Int), &Depolorizer{data: readbuffer{}, done: true}},
+		{"Raw", new(Raw), &Depolorizer{data: readbuffer{}, done: true}},
+		{"Document", new(Document), &Depolorizer{data: readbuffer{}, done: true}},
+		{"[]float64", new([]float64), &Depolorizer{data: readbuffer{}, done: true}},
+		{"[2]string", new([2]string), &Depolorizer{data: readbuffer{}, done: true}},
+		{"map[string]string", new(map[string]string), &Depolorizer{data: readbuffer{}, done: true}},
+		{"IntegerObject", new(IntegerObject), &Depolorizer{data: readbuffer{}, done: true}},
+		{"CustomEncodeObject", new(CustomEncodeObject), &Depolorizer{data: readbuffer{}, done: true}},
 	}
 
-	for tno, test := range tests {
-		err := test.buffer.Depolorize(test.object)
-		assert.EqualError(t, err, ErrInsufficientWire.Error(), "Test No: %v", tno)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.buffer.Depolorize(test.object)
+			assert.EqualError(t, err, ErrInsufficientWire.Error())
+		})
 	}
 }

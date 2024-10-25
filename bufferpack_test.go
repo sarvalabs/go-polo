@@ -8,26 +8,30 @@ import (
 
 func TestReadbuffer(t *testing.T) {
 	tests := []struct {
+		name string
 		data []byte
 		tag  int
 		wire WireType
 		load bool
 	}{
-		{[]byte{0}, 1, WireNull, false},
-		{[]byte{14, 47, 6, 54, 112, 98, 98, 112, 98, 98}, 1, WirePack, true},
+		{"null wire", []byte{0}, 1, WireNull, false},
+		{"full wire", []byte{14, 47, 6, 54, 112, 98, 98, 112, 98, 98}, 1, WirePack, true},
 	}
 
 	for _, test := range tests {
-		rb, err := newreadbuffer(test.data)
-		assert.Nil(t, err)
-		assert.Equal(t, test.data[test.tag:], rb.data)
-		assert.Equal(t, test.wire, rb.wire)
-
-		if _, err = rb.unpack(); test.load {
+		t.Run(test.name, func(t *testing.T) {
+			rb, err := newreadbuffer(test.data)
 			assert.Nil(t, err)
-		} else {
-			assert.NotNil(t, err)
-		}
+
+			assert.Equal(t, test.data[test.tag:], rb.data)
+			assert.Equal(t, test.wire, rb.wire)
+
+			if _, err = rb.unpack(); test.load {
+				assert.Nil(t, err)
+			} else {
+				assert.NotNil(t, err)
+			}
+		})
 	}
 }
 

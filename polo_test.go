@@ -950,37 +950,41 @@ func TestInterface(t *testing.T) {
 func TestUnsupported(t *testing.T) {
 	var err error
 
-	// Channels
-	_, err = Polorize(make(chan string))
-	require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	t.Run("Channels", func(t *testing.T) {
+		_, err = Polorize(make(chan string))
+		require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
 
-	// Functions
-	_, err = Polorize(new(func(string)))
-	require.EqualError(t, err, "incompatible value error: unsupported type: func(string) [func]")
+		err = Depolorize(new(chan string), []byte{0})
+		require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	})
 
-	// Slice of Unsupported Types
-	_, err = Polorize(make([]func(string), 2))
-	require.EqualError(t, err, "incompatible value error: unsupported type: func(string) [func]")
+	t.Run("Functions", func(t *testing.T) {
+		_, err = Polorize(new(func(string)))
+		require.EqualError(t, err, "incompatible value error: unsupported type: func(string) [func]")
+	})
 
-	// Array of Unsupported Types
-	_, err = Polorize(new([2]chan string))
-	require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	t.Run("Slice of Unsupported Types", func(t *testing.T) {
+		_, err = Polorize(make([]func(string), 2))
+		require.EqualError(t, err, "incompatible value error: unsupported type: func(string) [func]")
+	})
 
-	// Map with Unsupported Type for Keys
-	_, err = Polorize(map[SimpleInterface]string{"foo": "bar", "boo": "far"})
-	require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
+	t.Run("Array of Unsupported Types", func(t *testing.T) {
+		_, err = Polorize(new([2]chan string))
+		require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	})
 
-	// Map with Unsupported Type for Keys
-	_, err = Polorize(map[[2]SimpleInterface]string{{"foo", "fon"}: "bar", {"boo", "bon"}: "far"})
-	require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
+	t.Run("Map with Unsupported Type for Keys", func(t *testing.T) {
+		_, err = Polorize(map[SimpleInterface]string{"foo": "bar", "boo": "far"})
+		require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
 
-	// Map with Unsupported Type for Values
-	_, err = Polorize(map[string]chan int{"foo": make(chan int)})
-	require.EqualError(t, err, "incompatible value error: unsupported type: chan int [chan]")
+		_, err = Polorize(map[[2]SimpleInterface]string{{"foo", "fon"}: "bar", {"boo", "bon"}: "far"})
+		require.EqualError(t, err, "incompatible value error: unsupported type: polo.SimpleInterface [interface]")
+	})
 
-	// Decode
-	err = Depolorize(new(chan string), []byte{0})
-	require.EqualError(t, err, "incompatible value error: unsupported type: chan string [chan]")
+	t.Run("Map with Unsupported Type for Values", func(t *testing.T) {
+		_, err = Polorize(map[string]chan int{"foo": make(chan int)})
+		require.EqualError(t, err, "incompatible value error: unsupported type: chan int [chan]")
+	})
 }
 
 type SkipObject struct {
@@ -1181,214 +1185,249 @@ func TestNullWire(t *testing.T) {
 
 func TestExcessIntegerData(t *testing.T) {
 	tests := []struct {
+		name   string
 		wire   []byte
 		object any
 		size   int
 		signed bool
 	}{
 		{
+			"8-bit unsigned",
 			[]byte{3, 255, 255},
 			new(uint8), 8, false,
 		},
 		{
+			"8-bit signed",
 			[]byte{3, 255, 255},
 			new(int8), 8, true,
 		},
 		{
+			"16-bit unsigned",
 			[]byte{3, 255, 255, 255},
 			new(uint16), 16, false,
 		},
 		{
+			"16-bit signed",
 			[]byte{3, 255, 255, 255},
 			new(int16), 16, true,
 		},
 		{
+			"32-bit unsigned",
 			[]byte{3, 255, 255, 255, 255, 255, 255},
 			new(uint32), 32, false,
 		},
 		{
+			"32-bit signed",
 			[]byte{3, 255, 255, 255, 255, 255, 255},
 			new(int32), 32, true,
 		},
 		{
+			"64-bit unsigned",
 			[]byte{3, 111, 114, 97, 110, 103, 101, 103, 101, 120},
 			new(uint64), 64, false,
 		},
 		{
+			"64-bit signed",
 			[]byte{3, 111, 114, 97, 110, 103, 101, 103, 101, 120},
 			new(int64), 64, true,
 		},
 	}
 
-	for tno, test := range tests {
-		err := Depolorize(test.object, test.wire)
-		if test.signed {
-			assert.EqualError(t, err,
-				fmt.Sprintf(
-					"incompatible value error: excess data for %v-bit integer", test.size),
-				"[%v] Input: %v", tno, test.wire,
-			)
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := Depolorize(test.object, test.wire)
+			if test.signed {
+				assert.EqualError(t, err, fmt.Sprintf("incompatible value error: excess data for %v-bit integer", test.size))
+			}
+		})
 	}
 }
 
 func TestMalformedFloatData(t *testing.T) {
 	tests := []struct {
+		name   string
 		wire   []byte
 		object any
 		err    error
 	}{
 		{
+			"malformed for 32-bit",
 			[]byte{7, 111, 114, 97, 110, 103, 101, 103, 101, 120},
 			new(float32),
 			IncompatibleWireError{"malformed data for 32-bit float"},
 		},
 		{
+			"malformed for 64-bit",
 			[]byte{7, 111, 114, 97},
 			new(float64),
 			IncompatibleWireError{"malformed data for 64-bit float"},
 		},
 		{
+			"NaN 32-bit",
 			[]byte{7, 255, 255, 0, 0},
 			new(float32),
 			IncompatibleValueError{"float is not a number"},
 		},
 		{
+			"NaN 64-bit",
 			[]byte{7, 255, 255, 0, 0, 0, 0, 0, 0},
 			new(float64),
 			IncompatibleValueError{"float is not a number"},
 		},
 	}
 
-	for tno, test := range tests {
-		err := Depolorize(test.object, test.wire)
-		assert.EqualError(t, err, test.err.Error(), "[%v] Input: %v", tno, test.wire)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := Depolorize(test.object, test.wire)
+			assert.EqualError(t, err, test.err.Error())
+		})
 	}
 }
 
 //nolint:lll
 func TestIncompatibleWireType(t *testing.T) {
 	tests := []struct {
+		name    string
 		wire    []byte
 		object  any
 		options []EncodingOptions
 		err     error
 	}{
 		{
+			"WireTrue -> float32",
 			[]byte{2},
 			new(float32),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, float}"},
 		},
 		{
+			"WireNegInt -> float64",
 			[]byte{4, 1},
 			new(float64),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, float}"},
 		},
 		{
+			"WireFloat -> string",
 			[]byte{7, 111, 114, 97, 110, 103, 101},
 			new(string),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
+			"WirePosInt -> bool",
 			[]byte{3, 44},
 			new(bool),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, true, false}"},
 		},
 		{
+			"WireTrue -> uint64",
 			[]byte{2},
 			new(uint64),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'true'. expected one of: {null, posint}"},
 		},
 		{
+			"WireNegInt -> []string",
 			[]byte{4, 45, 22},
 			new([]string),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, pack}"},
 		},
 		{
+			"WireNegInt -> []byte",
 			[]byte{4, 45, 22},
 			new([]byte),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, word}"},
 		},
 		{
+			"WirePosInt -> [4]string",
 			[]byte{3, 45, 22},
 			new([4]string),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
+			"WireRaw -> map[string]string",
 			[]byte{5, 45, 22},
 			new(map[string]string),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, pack}"},
 		},
 		{
+			"WireFloat -> big.Int",
 			[]byte{7, 45, 22, 56, 34},
 			new(big.Int),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, posint, negint}"},
 		},
 		{
+			"WirePosInt -> struct",
 			[]byte{3, 45, 22},
 			new(*IntegerObject),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
+			"struct field: WirePosInt -> string",
 			[]byte{14, 95, 3, 3, 3, 3, 3},
 			&WordObject{},
 			[]EncodingOptions{},
 			IncompatibleWireError{"struct field [polo.WordObject.A <string>]: incompatible wire: unexpected wiretype 'posint'. expected one of: {null, word}"},
 		},
 		{
+			"struct field: WireFalse -> int",
 			[]byte{14, 95, 1, 0, 0, 0, 0},
 			&IntegerObject{},
 			[]EncodingOptions{},
 			IncompatibleWireError{"struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
+			"struct from document with DocStruct disabled",
 			[]byte{13, 47, 6, 21, 65, 1},
 			&IntegerObject{},
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'document'. expected one of: {null, pack}"},
 		},
 		{
+			"document field: WireFloat -> string",
 			[]byte{13, 95, 7, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
+			"WireNegInt -> []uint64",
 			[]byte{14, 31, 4, 132},
 			new([]uint64),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'negint'. expected one of: {null, posint}"},
 		},
 		{
+			"WireWord -> []byte",
 			[]byte{6, 45, 56},
 			new([]byte),
 			[]EncodingOptions{PackedBytes()},
 			IncompatibleWireError{"unexpected wiretype 'word'. expected one of: {null, pack}"},
 		},
 		{
+			"string map from document with DocStringMaps disabled",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
 			new(map[string]int),
 			[]EncodingOptions{},
 			IncompatibleWireError{"unexpected wiretype 'document'. expected one of: {null, pack}"},
 		},
 		{
+			"string map from document with DocStringMaps enabled",
 			[]byte{13, 47, 5, 53, 98, 111, 111, 3, 1, 44},
 			new(map[string]int),
 			[]EncodingOptions{DocStringMaps()},
 			IncompatibleWireError{"unexpected wiretype 'raw'. expected one of: {null, word}"},
 		},
 		{
+			"string map from document with DocStringMaps enabled",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 145, 12},
 			new(map[string]int),
 			[]EncodingOptions{DocStringMaps()},
@@ -1396,9 +1435,11 @@ func TestIncompatibleWireType(t *testing.T) {
 		},
 	}
 
-	for tno, test := range tests {
-		err := Depolorize(test.object, test.wire, test.options...)
-		assert.EqualError(t, err, test.err.Error(), "[%v] Input: %v", tno, test.wire)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := Depolorize(test.object, test.wire, test.options...)
+			assert.EqualError(t, err, test.err.Error())
+		})
 	}
 }
 
@@ -1411,63 +1452,63 @@ func TestMalformed(t *testing.T) {
 		err     error
 	}{
 		{
-			"",
+			"non-pointer target",
 			[]byte{14, 78, 3, 3, 3, 3},
 			IntegerObject{},
 			[]EncodingOptions{},
 			ErrObjectNotPtr,
 		},
 		{
-			"",
+			"signed integer overflow",
 			[]byte{3, 255, 255, 255, 255, 255, 255, 255, 255},
 			new(int64),
 			[]EncodingOptions{},
 			IncompatibleValueError{"overflow for signed integer"},
 		},
 		{
-			"",
+			"excess 8-bit data",
 			[]byte{14, 47, 3, 19, 102, 45, 67},
 			new([]byte),
 			[]EncodingOptions{PackedBytes()},
 			IncompatibleValueError{"excess data for 8-bit integer"},
 		},
 		{
-			"",
+			"varint overflow",
 			[]byte{255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 93, 3, 3, 3, 3, 3},
 			&IntegerObject{},
 			[]EncodingOptions{},
 			MalformedTagError{errVarintOverflow.Error()},
 		},
 		{
-			"",
+			"varint premature termination",
 			[]byte{14, 47, 6, 134},
 			new([][2]byte),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"mismatched data length for byte array",
 			[]byte{6, 255, 255, 255},
 			new([2]byte),
 			[]EncodingOptions{},
 			IncompatibleWireError{"mismatched data length for byte array"},
 		},
 		{
-			"",
+			"missing load tag for pack wire",
 			[]byte{14, 78, 3, 3, 3, 3},
 			&IntegerObject{},
 			[]EncodingOptions{},
 			errors.New("load convert fail: missing load tag"),
 		},
 		{
-			"",
+			"malformed load tag for pack wire",
 			[]byte{14, 255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 3, 3, 3, 3, 3},
 			&IntegerObject{},
 			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint overflows 64-bit integer"),
 		},
 		{
-			"",
+			"insufficient data for struct decode",
 			[]byte{14, 79, 3, 3, 3, 3, 0, 0, 0, 0},
 			&IntegerObject{},
 			[]EncodingOptions{},
@@ -1509,91 +1550,91 @@ func TestMalformed(t *testing.T) {
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
-			"",
+			"insufficient data for document decode",
 			[]byte{13, 63, 6, 53, 86, 101, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
 			[]EncodingOptions{},
 			errors.New("insufficient data in wire for decode"),
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: string array",
 			[]byte{14, 47, 6, 230, 102, 111, 111},
 			new([]string),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: bytes slice",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
 			new([][]byte),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: bytes array",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
 			new([2][]byte),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: string map",
 			[]byte{14, 79, 6, 54, 102, 230, 1, 1, 1, 1, 1, 1},
 			new(map[string]string),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: bytes",
 			[]byte{14, 47, 7, 231, 102, 111, 111},
 			new([]byte),
 			[]EncodingOptions{PackedBytes()},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: string map",
 			[]byte{14, 63, 6, 54, 230, 1, 1, 1, 1, 1, 1},
 			new(map[string]string),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: float32 slice",
 			[]byte{14, 47, 7, 231, 102, 111, 111},
 			new([]float32),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: float64 slice",
 			[]byte{14, 47, 7, 231, 102, 111, 111, 231, 102, 111, 111},
 			new([]float64),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: big int slice",
 			[]byte{14, 47, 5, 165, 1, 44, 250},
 			new([]big.Int),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: uint64 slice",
 			[]byte{14, 47, 3, 131},
 			new([]uint64),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: custom struct",
 			[]byte{14, 47, 6, 203},
 			new(CustomEncodeObject),
 			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
-			"",
+			"load tag varint terminated prematurely: doc string map",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 131},
 			new(map[string]int),
 			[]EncodingOptions{DocStringMaps()},
