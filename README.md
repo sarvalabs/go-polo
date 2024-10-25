@@ -54,25 +54,25 @@ POLO's partially encoding and field order based indexing (and string based index
 
 ## Examples
 ### Simple Polorization & Depolorization (Encoding/Decoding)
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L16-L64
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/polo_test.go#L16-L64
 
 ### Custom Polorization & Depolorization (Encoding/Decoding)
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L66-L175
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/polo_test.go#L66-L173
 
 ### Wire Decoding with `Any`
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polo_test.go#L177-L214
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/polo_test.go#L175-L212
 
 ### `Polorizer` (Encoding Buffer)
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/polorizer_test.go#L12-L42
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/polorizer_test.go#L12-L42
 
 ### `Depolorizer` (Decoding Buffer)
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/depolorizer_test.go#L13-L70
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/depolorizer_test.go#L13-L70
 
 ### Document Encoding
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/document_test.go#L12-L74
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/document_test.go#L12-L74
 
 ### Document Decoding
-https://github.com/sarvalabs/go-polo/blob/e53ea07f975be8598d8e279dc006cd3f4b7e33ac/document_test.go#L76-L124
+https://github.com/sarvalabs/go-polo/blob/22a975e4d1d5329e16aaedd7207aee382e64d30e/document_test.go#L76-L124
 
 ## Contributing
 Unless you explicitly state otherwise, any contribution intentionally submitted
@@ -80,7 +80,7 @@ for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as below, without any additional terms or conditions.
 
 ## License
-&copy; 2023 Sarva Labs Inc. & MOI Protocol Developers.
+&copy; 2024 Sarva Labs Inc. & MOI Protocol Developers.
 
 This project is licensed under either of
 - [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) ([`LICENSE-APACHE`](LICENSE-APACHE))
