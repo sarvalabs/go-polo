@@ -169,6 +169,7 @@ func (rb readbuffer) decodeBytes32(allowPack bool) ([32]byte, error) {
 	}
 
 	var bytes32 [32]byte
+
 	copy(bytes32[:], value)
 
 	return bytes32, nil
