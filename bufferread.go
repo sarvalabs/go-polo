@@ -110,20 +110,11 @@ func (rb readbuffer) decodeBool() (bool, error) {
 	}
 }
 
-func (rb readbuffer) decodeBytes() ([]byte, error) {
+func (rb readbuffer) decodeBytes(allowPack bool) ([]byte, error) {
 	switch rb.wire {
 	case WireWord:
 		return rb.data, nil
-	// Nil Byte Slice (Default)
-	case WireNull:
-		return nil, errNilValue
-	default:
-		return nil, IncompatibleWireType(rb.wire, WireNull, WireWord)
-	}
-}
 
-func (rb readbuffer) decodeBytesFromPack() ([]byte, error) {
-	switch rb.wire {
 	// Packed Bytes Value ([]uint8)
 	case WirePack:
 		// Unpack the pack encoded data
@@ -156,9 +147,31 @@ func (rb readbuffer) decodeBytesFromPack() ([]byte, error) {
 	// Nil Byte Slice (Default)
 	case WireNull:
 		return nil, errNilValue
+
 	default:
-		return nil, IncompatibleWireType(rb.wire, WireNull, WirePack)
+		allowed := []WireType{WireNull, WireWord}
+		if allowPack {
+			allowed = append(allowed, WirePack)
+		}
+
+		return nil, IncompatibleWireType(rb.wire, allowed...)
 	}
+}
+
+func (rb readbuffer) decodeBytes32(allowPack bool) ([32]byte, error) {
+	value, err := rb.decodeBytes(allowPack)
+	if err != nil {
+		return [32]byte{}, err
+	}
+
+	if len(value) > 32 {
+		return [32]byte{}, IncompatibleValueError{"excess data for 32-byte array"}
+	}
+
+	var bytes32 [32]byte
+	copy(bytes32[:], value)
+
+	return bytes32, nil
 }
 
 func (rb readbuffer) decodeString() (string, error) {

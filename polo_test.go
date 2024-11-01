@@ -1407,10 +1407,10 @@ func TestIncompatibleWireType(t *testing.T) {
 		},
 		{
 			"WireWord -> []byte",
-			[]byte{6, 45, 56},
+			[]byte{3, 76},
 			new([]byte),
 			[]EncodingOptions{PackedBytes()},
-			IncompatibleWireError{"unexpected wiretype 'word'. expected one of: {null, pack}"},
+			IncompatibleWireError{"unexpected wiretype 'posint'. expected one of: {null, word, pack}"},
 		},
 		{
 			"string map from document with DocStringMaps disabled",
@@ -1833,12 +1833,56 @@ func TestPointerAlias(t *testing.T) {
 	testSerialization(t, object)
 }
 
-func TestNilByteArray(t *testing.T) {
-	wire := []byte{0}
+func TestSpecialBytes(t *testing.T) {
+	t.Run("Nil Bytes", func(t *testing.T) {
+		wire := []byte{0}
 
-	var x [10]byte
+		var x [10]byte
 
-	err := Depolorize(&x, wire)
-	require.NoError(t, err)
-	require.Equal(t, x, [10]byte{})
+		err := Depolorize(&x, wire)
+		require.NoError(t, err)
+		require.Equal(t, x, [10]byte{})
+	})
+
+	t.Run("Bytes32", func(t *testing.T) {
+		t.Run("Excess", func(t *testing.T) {
+			depolorizer, err := NewDepolorizer([]byte{
+				6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+			})
+			require.NoError(t, err)
+
+			_, err = depolorizer.DepolorizeBytes32()
+			require.EqualError(t, err, "incompatible value error: excess data for 32-byte array")
+		})
+
+		t.Run("Invalid", func(t *testing.T) {
+			depolorizer, err := NewDepolorizer([]byte{3, 56})
+			require.NoError(t, err)
+
+			_, err = depolorizer.DepolorizeBytes32()
+			require.EqualError(t, err, "incompatible wire: unexpected wiretype 'posint'. expected one of: {null, word}")
+		})
+
+		t.Run("Insufficient", func(t *testing.T) {
+			depolorizer := Depolorizer{data: readbuffer{}, done: true}
+
+			_, err := depolorizer.DepolorizeBytes32()
+			require.EqualError(t, err, "insufficient data in wire for decode")
+		})
+
+		t.Run("Perfect", func(t *testing.T) {
+			depolorizer, err := NewDepolorizer([]byte{
+				6, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+			})
+			require.NoError(t, err)
+
+			decoded, err := depolorizer.DepolorizeBytes32()
+			require.NoError(t, err)
+			require.Equal(t, [32]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+				255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255}, decoded,
+			)
+		})
+	})
 }

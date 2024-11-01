@@ -28,7 +28,7 @@ func (cfg *wireConfig) apply(options ...EncodingOptions) {
 type EncodingOptions func(*wireConfig)
 
 // PackedBytes is an EncodingOption that sets the encoding/decoding
-// to interpret bytes as pack-encoded uint8 values instead of a word
+// to allow interpretation of bytes from pack-encoded uint8 values
 func PackedBytes() EncodingOptions {
 	return func(config *wireConfig) {
 		config.packBytes = true

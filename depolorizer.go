@@ -165,6 +165,9 @@ func allowNilValue[V any](value V, err error) (V, error) {
 // DepolorizeBytes attempts to decode a bytes value from the Depolorizer, consuming one wire element.
 // Returns an error if there are no elements left or if the element is not WireWord.
 // Returns a nil byte slice if the element is a WireNull.
+//
+// If PackedBytes option is used in the decoder configuration, WirePack
+// containing u8 elements will be successfully interpreted as a byte slice.
 func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 	// Read the next element
 	data, err := depolorizer.read()
@@ -172,11 +175,23 @@ func (depolorizer *Depolorizer) DepolorizeBytes() ([]byte, error) {
 		return nil, err
 	}
 
-	if depolorizer.cfg.packBytes {
-		return allowNilValue(data.decodeBytesFromPack())
+	return allowNilValue(data.decodeBytes(depolorizer.cfg.packBytes))
+}
+
+// DepolorizeBytes32 attempts to decode a 32-byte value from the Depolorizer, consuming one wire element.
+// Returns an error if there are no elements left or if the element is not WireWord.
+// Returns a zero byte array if the element is a WireNull.
+//
+// If PackedBytes option is used in the decoder configuration, WirePack
+// containing u8 elements will be successfully interpreted as a byte array.
+func (depolorizer *Depolorizer) DepolorizeBytes32() ([32]byte, error) {
+	// Read the next element
+	data, err := depolorizer.read()
+	if err != nil {
+		return [32]byte{}, err
 	}
 
-	return allowNilValue(data.decodeBytes())
+	return allowNilValue(data.decodeBytes32(depolorizer.cfg.packBytes))
 }
 
 // DepolorizeString attempts to decode a string value from the Depolorizer, consuming one wire element.
