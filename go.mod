@@ -1,14 +1,12 @@
 module github.com/sarvalabs/go-polo
 
-go 1.20
+go 1.22
 
-retract (
-	v0.4.4 // published incorrectly 
-)
+retract v0.4.4 // published incorrectly
 
 require (
 	github.com/google/gofuzz v1.2.0
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.10.0
 )
 
 require (
