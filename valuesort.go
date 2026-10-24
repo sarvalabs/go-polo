@@ -191,6 +191,7 @@ func KeySort(keys []Key, ch chan Key) {
 	// If there is only 1 element, return it
 	if len(keys) == 1 {
 		ch <- keys[0]
+
 		return
 	}
 
@@ -214,18 +215,22 @@ func KeySort(keys []Key, ch chan Key) {
 		case lok && rok:
 			if ValueLt(lv.val, rv.val) {
 				ch <- lv
+
 				lv, lok = <-left
 			} else {
 				ch <- rv
+
 				rv, rok = <-right
 			}
 
 		case lok && !rok:
 			ch <- lv
+
 			lv, lok = <-left
 
 		case !lok && rok:
 			ch <- rv
+
 			rv, rok = <-right
 		}
 	}

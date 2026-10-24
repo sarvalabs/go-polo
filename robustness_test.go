@@ -82,6 +82,7 @@ func TestDepolorize_LoadLengthExceedsData(t *testing.T) {
 				// Any accepts the wire as is, every other target has to unpack it
 				if _, isAny := object.(*Any); isAny {
 					require.NoError(t, err)
+
 					return
 				}
 
@@ -549,10 +550,12 @@ func FuzzDepolorizeNoPanic(f *testing.F) {
 		}
 
 		var walk func(*Depolorizer)
+
 		walk = func(depolorizer *Depolorizer) {
 			for !depolorizer.Done() {
 				if depolorizer.IsNull() {
 					_ = depolorizer.DepolorizeNull()
+
 					continue
 				}
 

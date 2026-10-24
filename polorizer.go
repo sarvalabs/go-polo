@@ -73,6 +73,7 @@ func (polorizer *Polorizer) PolorizeNull() {
 func (polorizer *Polorizer) PolorizeBytes(value []byte) {
 	if polorizer.cfg.packBytes {
 		polorizer.polorizeByteAsPack(value)
+
 		return
 	}
 
@@ -153,6 +154,7 @@ func (polorizer *Polorizer) PolorizeFloat64(value float64) {
 func (polorizer *Polorizer) PolorizeBigInt(value *big.Int) {
 	if value == nil {
 		polorizer.PolorizeNull()
+
 		return
 	}
 
@@ -185,6 +187,7 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 	// If raw value is nil, encode WireNull
 	if value == nil {
 		polorizer.PolorizeNull()
+
 		return nil
 	}
 
@@ -207,6 +210,7 @@ func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 	// If pack is nil, encode WireNull
 	if pack == nil {
 		polorizer.PolorizeNull()
+
 		return
 	}
 
@@ -221,6 +225,7 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Nil Document
 	if document == nil {
 		polorizer.PolorizeNull()
+
 		return
 	}
 
@@ -302,6 +307,7 @@ func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
 	// If inner is nil, encode a WireNull
 	if inner == nil {
 		polorizer.PolorizeNull()
+
 		return
 	}
 
@@ -471,6 +477,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
 			polorizer.PolorizeNull()
+
 			return nil
 		}
 	}
@@ -515,6 +522,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// Nil Slice
 		if value.IsNil() {
 			polorizer.PolorizeNull()
+
 			return nil
 		}
 
@@ -526,12 +534,14 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// Raw Bytes
 		if value.Type() == reflect.TypeOf(Raw{}) {
 			polorizer.PolorizeRaw(value.Bytes())
+
 			return nil
 		}
 
 		// Byte Slice
 		if value.Type().Elem().Kind() == reflect.Uint8 {
 			polorizer.PolorizeBytes(value.Bytes())
+
 			return nil
 		}
 
@@ -542,6 +552,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// Byte Array
 		if value.Type().Elem().Kind() == reflect.Uint8 {
 			polorizer.polorizeByteArrayValue(value)
+
 			return nil
 		}
 
@@ -552,6 +563,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		// Nil Map
 		if value.IsNil() {
 			polorizer.PolorizeNull()
+
 			return nil
 		}
 

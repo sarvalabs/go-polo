@@ -217,6 +217,7 @@ func TestDocument_Get(t *testing.T) {
 	// Attempt to retrieve the integer object from the Document.
 	// Test for nil error and value equality
 	var foo int
+
 	err = doc.Get("foo", &foo)
 	assert.Nil(t, err)
 	assert.Equal(t, 25, foo)
@@ -224,6 +225,7 @@ func TestDocument_Get(t *testing.T) {
 	// Attempt to retrieve the string object from the Document.
 	// Test for nil error and value equality
 	var bar string
+
 	err = doc.Get("bar", &bar)
 	assert.Nil(t, err)
 	assert.Equal(t, "hello", bar)

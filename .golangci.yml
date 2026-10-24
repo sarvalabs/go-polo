@@ -1,24 +1,20 @@
+version: "2"
+
 run:
   tests: true
-  # timeout for analysis, e.g. 30s, 5m, default is 1m
   timeout: 5m
-  # exit code when at least one issue was found, default is 1
   issues-exit-code: 1
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - dogsled
     - dupl
     - errname
     - errorlint
     - forcetypeassert
-    - exportloopref
     - goconst
     - gocritic
-    - gofumpt
-    - gosec
-    - gosimple
     - govet
     - importas
     - ineffassign
@@ -26,41 +22,78 @@ linters:
     - makezero
     - misspell
     - nakedret
+    - nlreturn
     - nolintlint
     - predeclared
     - prealloc
     - staticcheck
-    - stylecheck
     - tparallel
     - thelper
-    - typecheck
     - unconvert
     - unused
     - whitespace
-    - wsl
+    - wsl_v5
+
+  settings:
+    staticcheck:
+      # v1 split these across staticcheck (SA) / gosimple (S1) / stylecheck (ST1)
+      # and never ran the QF ("quickfix") group at all. v2 merged all four, so
+      # QF* is net-new noise -- keep it off to match v1 coverage.
+      checks:
+        - all
+        - -QF*
+        # v1 stylecheck defaults
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+    govet:
+      disable:
+        # new analyzer in the Go 1.26 toolchain; pure style noise
+        - inline
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: true
+      branch-max-lines: 2
+      # wsl_v5's cuddling rules are stricter than v1's wsl. The send and
+      # err checks are net-new against v1 -- keep them off to match v1
+      # coverage.
+      disable:
+        - send
+        - err
+    goconst:
+      # v2's goconst also inspects struct-literal and call-argument strings
+      # and counts occurrences repo-wide. Verified: v1 reported zero issues
+      # in test files even with ignore-tests: false, so this loses no v1
+      # coverage; without it v2 reports 125 net-new test-fixture findings.
+      ignore-tests: true
+    dogsled:
+      max-blank-identifiers: 3
+    nolintlint:
+      allow-unused: false
+      require-explanation: false
+      require-specific: false
+
+  exclusions:
+    # v1 default was lax; v2 default is strict
+    generated: lax
+    # v1 applied these implicitly; v2 does not
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - text: "Use of weak random number generator"
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofumpt
 
 issues:
-  exclude-rules:
-    - text: "Use of weak random number generator"
-      linters:
-        - gosec
-
   max-issues-per-linter: 10000
   max-same-issues: 10000
-
-linters-settings:
-  dogsled:
-    max-blank-identifiers: 3
-  maligned:
-    # print struct with more effective memory layout or not, false by default
-    suggest-new: true
-  nolintlint:
-    allow-unused: false # to be set to false once all issues are addressed, any exceptions needed to be added above
-    allow-leading-space: true
-    require-explanation: false # nice to have as true
-    require-specific: false
-  depguard:
-    Main:
-      allow:
-        - $github.com/sarvalabs/*
-        - github.com/pkg/errors

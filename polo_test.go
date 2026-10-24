@@ -1814,6 +1814,7 @@ func TestUnSettableValue(t *testing.T) {
 	require.NoError(t, err)
 
 	var decoded *BoolObject
+
 	err = Depolorize(decoded, wire)
 	require.EqualError(t, err, "object is not settable")
 }
