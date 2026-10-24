@@ -20,7 +20,7 @@ func ValueSort(keys []reflect.Value) func(int, int) bool {
 func ValueLt(a, b reflect.Value) bool {
 	switch a.Kind() {
 	case reflect.Bool:
-		return b.Bool()
+		return !a.Bool() && b.Bool()
 
 	case reflect.String:
 		return a.String() < b.String()
@@ -61,6 +61,18 @@ func ValueCmp(a, b reflect.Value) int {
 	}
 
 	switch a.Kind() {
+	case reflect.Bool:
+		av, bv := a.Bool(), b.Bool()
+
+		switch {
+		case !av && bv:
+			return -1
+		case av == bv:
+			return 0
+		default:
+			return 1
+		}
+
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		av, bv := a.Int(), b.Int()
 
@@ -127,6 +139,25 @@ func ValueCmp(a, b reflect.Value) int {
 	}
 
 	panic("unsupported key compare")
+}
+
+// unorderableKeyType returns nil if map keys of the given type can be ordered by ValueLt,
+// otherwise the (innermost) type that cannot be ordered. Booleans, strings, integers,
+// floats and arrays of those (recursively) can be ordered.
+func unorderableKeyType(t reflect.Type) reflect.Type {
+	switch t.Kind() {
+	case reflect.Bool, reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return nil
+
+	case reflect.Array:
+		return unorderableKeyType(t.Elem())
+
+	default:
+		return t
+	}
 }
 
 // Key is an indexed reflect value. Preserves the original index of key.

@@ -36,10 +36,11 @@ func TestReadbuffer(t *testing.T) {
 }
 
 func TestLoadReader(t *testing.T) {
-	load := newpackbuffer(
+	load, err := newpackbuffer(
 		[]byte{6, 51, 86},
 		[]byte{112, 98, 98, 1, 44, 112, 98, 98},
 	)
+	assert.Nil(t, err)
 
 	assert.Equal(t, 0, load.coff)
 	assert.Equal(t, 0, load.noff)

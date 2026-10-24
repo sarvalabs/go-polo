@@ -2,8 +2,6 @@ package polo
 
 import (
 	"bytes"
-	"errors"
-	"io"
 )
 
 // packbuffer is a read-only buffer that is obtained from a compound wire (pack).
@@ -21,18 +19,17 @@ type packbuffer struct {
 
 // newpackbuffer creates a new packbuffer for a given head and body slice of bytes.
 // The returned packbuffer is seeded and the next iteration will return the first element of the load.
-func newpackbuffer(head, body []byte) *packbuffer {
-	// Initialize an empty packbuffer
-	lr := new(packbuffer)
-
-	// Create a reader from the head data and set it
-	lr.head = bytes.NewReader(head)
-	lr.body = body
+// Returns an error if the first tag in the head is malformed or declares an offset outside the body.
+func newpackbuffer(head, body []byte) (*packbuffer, error) {
+	// Initialize a packbuffer with a reader over the head data and the body
+	lr := &packbuffer{head: bytes.NewReader(head), body: body}
 
 	// Seed the offset values of the packbuffer by iterating once
-	_, _ = lr.next()
+	if _, err := lr.next(); err != nil {
+		return nil, err
+	}
 
-	return lr
+	return lr, nil
 }
 
 // done returns whether all elements in the packbuffer have been read.
@@ -53,6 +50,8 @@ func (lr *packbuffer) peek() (WireType, bool) {
 
 // next returns the next element from the packbuffer.
 // Returns an error if packbuffer is done. (can be checked with a call to done())
+// Returns an error if the tag for the next element is malformed or if its offset
+// precedes the offset of the current element or lies outside the body.
 func (lr *packbuffer) next() (readbuffer, error) {
 	// Check if the head reader is exhausted
 	if lr.head.Len() == 0 {
@@ -66,7 +65,8 @@ func (lr *packbuffer) next() (readbuffer, error) {
 		// Update next values to nulls. -1 means the packbuffer is set as done
 		lr.noff, lr.nw = -1, WireNull
 
-		// Create a readbuffer from the current wiretype and the rest of data in the body and return it
+		// Create a readbuffer from the current wiretype and the rest of data in the body and return it.
+		// The current offset has already been checked against the body when its tag was consumed.
 		return readbuffer{lr.cw, lr.body[lr.coff:]}, nil
 	}
 
@@ -76,32 +76,21 @@ func (lr *packbuffer) next() (readbuffer, error) {
 		return readbuffer{}, MalformedTagError{err.Error()}
 	}
 
+	// The tag's offset is where the next element starts in the body. It must not precede
+	// the start of the current element and must not exceed the length of the body.
+	// Compared as uint64 so that offsets that do not fit in an int cannot wrap around.
+	offset := tag >> 4
+	if offset < uint64(lr.noff) || offset > uint64(len(lr.body)) { //nolint:gosec // noff and len are never negative
+		return readbuffer{}, MalformedTagError{"element offset out of bounds"}
+	}
+
 	// Update the current values from the next values
 	lr.coff, lr.cw = lr.noff, lr.nw
 	// Set the next values based on the tag data (first 4 bits represent wiretype, rest the offset position of the dats)
-	lr.noff, lr.nw = int(tag>>4), WireType(tag&15)
+	lr.noff, lr.nw = int(offset), WireType(tag&15)
 
 	// Create a readbuffer from the current wiretype and body bytes between the two offset positions
 	return readbuffer{lr.cw, lr.body[lr.coff:lr.noff]}, nil
-}
-
-// read consumes n number of bytes from the reader and returns it as a slice of bytes.
-// Throws an error if the r does not have n number of bytes.
-func read(r io.Reader, n int) ([]byte, error) {
-	// If n == 0, return an empty byte slice
-	if n == 0 {
-		return []byte{}, nil
-	}
-
-	// Create a slice of bytes with the specified length
-	d := make([]byte, n)
-
-	// Read from the reader into d
-	if rn, err := r.Read(d); err != nil || rn != n {
-		return nil, errors.New("insufficient data in reader")
-	}
-
-	return d, nil
 }
 
 // prepend is a generic function that accepts an object of some any type and a slice of objects of

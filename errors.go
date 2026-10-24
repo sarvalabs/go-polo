@@ -21,6 +21,8 @@ var (
 	ErrObjectNotSettable = errors.New("object is not settable")
 	// ErrInsufficientWire is an error for when the data in depolorizer is exhausted
 	ErrInsufficientWire = errors.New("insufficient data in wire for decode")
+	// ErrMaxDepthExceeded is an error for when a wire is nested deeper than the decoder allows (see MaxDepth)
+	ErrMaxDepthExceeded = errors.New("maximum nesting depth exceeded")
 )
 
 // MalformedTagError is an error for when a consumed varint for a tag is malformed
@@ -54,6 +56,60 @@ func IncompatibleWireType(actual WireType, expected ...WireType) IncompatibleWir
 	data := "{" + strings.Join(expects, `, `) + `}`
 
 	return IncompatibleWireError{fmt.Sprintf("unexpected wiretype '%v'. expected one of: %v", actual, data)}
+}
+
+// structFieldError is an IncompatibleWireError for a struct field that could not be decoded.
+// The field description and the field's error are kept apart and only rendered on demand, so
+// that a failure deep inside nested structs costs linear (not quadratic) time in the nesting depth.
+// It is retrievable as an IncompatibleWireError with errors.As.
+type structFieldError struct {
+	field string // the field description as "<struct type>.<field name> <field type>"
+	cause error
+}
+
+// newStructFieldError returns a structFieldError for the given field of the target struct type
+func newStructFieldError(target reflect.Type, field reflect.StructField, cause error) structFieldError {
+	return structFieldError{fmt.Sprintf("%v.%v <%v>", target, field.Name, field.Type), cause}
+}
+
+// Error implements the error interface for structFieldError.
+// A chain of nested struct field errors is rendered iteratively.
+func (err structFieldError) Error() string {
+	var sb strings.Builder
+
+	for {
+		sb.WriteString("incompatible wire: struct field [")
+		sb.WriteString(err.field)
+		sb.WriteString("]: ")
+
+		next, ok := err.cause.(structFieldError) //nolint:errorlint // only directly nested field errors chain
+		if !ok {
+			sb.WriteString(err.cause.Error())
+
+			return sb.String()
+		}
+
+		err = next
+	}
+}
+
+// Is reports whether the error of the field matches the target, so that errors.Is sees through
+// struct field errors. The internal nil value marker is excluded: a null that was reported as a
+// field error must not be mistaken for a null of the whole struct by the callers that check it.
+func (err structFieldError) Is(target error) bool {
+	return !errors.Is(target, errNilValue) && errors.Is(err.cause, target)
+}
+
+// As allows a structFieldError to be retrieved as an IncompatibleWireError with errors.As.
+// Any other target is matched against the error of the field.
+func (err structFieldError) As(target any) bool {
+	if wireErr, ok := target.(*IncompatibleWireError); ok {
+		*wireErr = IncompatibleWireError{strings.TrimPrefix(err.Error(), "incompatible wire: ")}
+
+		return true
+	}
+
+	return errors.As(err.cause, target)
 }
 
 // IncompatibleValueError is an error for when an incompatible value is used for encoding

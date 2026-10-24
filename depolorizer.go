@@ -2,10 +2,13 @@ package polo
 
 import (
 	"errors"
-	"fmt"
 	"math/big"
 	"reflect"
 )
+
+// byteType is the reflect.Type of a byte (uint8). Slices and arrays of
+// exactly this element type can be converted from a []byte directly.
+var byteType = reflect.TypeOf(byte(0))
 
 // Depolorizer is a decoding buffer that can sequentially depolorize object from it.
 // It can check whether there are elements left in the buffer with Done()
@@ -17,6 +20,8 @@ type Depolorizer struct {
 	pack *packbuffer
 
 	cfg wireConfig
+	// depth is the nesting depth of the Depolorizer (0 for a top-level Depolorizer)
+	depth int
 }
 
 // NewDepolorizer returns a new Depolorizer for some given bytes.
@@ -32,6 +37,18 @@ func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, erro
 		opt(config)
 	}
 
+	// Copy the wire so that the Depolorizer (and the byte slices
+	// it decodes) never alias a buffer that the caller may reuse
+	wire := make([]byte, len(data))
+	copy(wire, data)
+
+	// Create a top-level non-pack Depolorizer
+	return newDepolorizer(wire, *config, 0)
+}
+
+// newDepolorizer returns a new Depolorizer for some given bytes with the given config and nesting depth.
+// Unlike NewDepolorizer, the bytes are not copied and must not be modified while the Depolorizer is in use.
+func newDepolorizer(data []byte, cfg wireConfig, depth int) (*Depolorizer, error) {
 	// Create a new readbuffer from the wire
 	rb, err := newreadbuffer(data)
 	if err != nil {
@@ -39,24 +56,26 @@ func NewDepolorizer(data []byte, options ...EncodingOptions) (*Depolorizer, erro
 	}
 
 	// Create a non-pack Depolorizer
-	return &Depolorizer{data: rb, cfg: *config}, nil
+	return &Depolorizer{data: rb, cfg: cfg, depth: depth}, nil
 }
 
-// newLoadDepolorizer returns a new Depolorizer from a given readbuffer.
+// newLoadDepolorizer returns a new Depolorizer from a given readbuffer with the given config and nesting depth.
 // The readbuffer is converted into a packbuffer and the returned Depolorizer is created in packed mode.
-func newLoadDepolorizer(data readbuffer, config *wireConfig) (*Depolorizer, error) {
+// Returns an error if the nesting depth exceeds the maximum allowed by the config.
+func newLoadDepolorizer(data readbuffer, cfg wireConfig, depth int) (*Depolorizer, error) {
+	// Check the nesting depth of the new Depolorizer against the config
+	if err := cfg.checkDepth(depth); err != nil {
+		return nil, err
+	}
+
 	// Convert the element into a packbuffer
 	pack, err := data.unpack()
 	if err != nil {
 		return nil, err
 	}
 
-	if config == nil {
-		config = defaultWireConfig()
-	}
-
 	// Create a new Depolorizer in packed mode
-	return &Depolorizer{pack: pack, packed: true, cfg: *config}, nil
+	return &Depolorizer{pack: pack, packed: true, cfg: cfg, depth: depth}, nil
 }
 
 // Unpacked attempts to unpack a Depolorizer that contains a WirePack or WireDoc element.
@@ -389,7 +408,7 @@ func (depolorizer *Depolorizer) DepolorizeDocument() (Document, error) {
 		return nil, err
 	}
 
-	return data.decodeDocument()
+	return data.decodeDocument(depolorizer.cfg, depolorizer.depth+1)
 }
 
 // DepolorizeAny attempts to decode an Any from the Depolorizer, consuming one wire element.
@@ -429,7 +448,7 @@ func (depolorizer *Depolorizer) DepolorizePacked() (*Depolorizer, error) {
 
 	switch data.wire {
 	case WirePack, WireDoc:
-		return newLoadDepolorizer(data, &depolorizer.cfg)
+		return newLoadDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 
 	default:
 		return nil, IncompatibleWireType(data.wire, WirePack, WireDoc)
@@ -446,8 +465,8 @@ func (depolorizer *Depolorizer) depolorizeInner() (*Depolorizer, error) {
 		return nil, err
 	}
 
-	// Create a non-pack Depolorizer
-	return &Depolorizer{data: data}, nil
+	// Create a non-pack Depolorizer that inherits the configuration and nesting depth
+	return &Depolorizer{data: data, cfg: depolorizer.cfg, depth: depolorizer.depth}, nil
 }
 
 // depolorizeByteArrayValue accepts a reflect.Type and decodes a byte array from the Depolorizer.
@@ -471,10 +490,47 @@ func (depolorizer *Depolorizer) depolorizeByteArrayValue(target reflect.Type) (r
 
 	// Create a Byte Array Value
 	array := reflect.New(target).Elem()
-	// Copy array contents from the slice into bytes
-	reflect.Copy(array, reflect.ValueOf(bytes))
+
+	// Copy array contents from the slice into the array. reflect.Copy requires
+	// identical element types, so arrays of a named byte type are filled element-wise
+	if target.Elem() == byteType {
+		reflect.Copy(array, reflect.ValueOf(bytes))
+	} else {
+		for i, b := range bytes {
+			array.Index(i).SetUint(uint64(b))
+		}
+	}
 
 	return array, nil
+}
+
+// depolorizeByteSliceValue accepts a reflect.Type and decodes a byte slice from the Depolorizer.
+// The target must be a slice of bytes (or of a named byte type) and the next value in the
+// Depolorizer must be a WireWord (or a WirePack of bytes if the PackedBytes option is set).
+func (depolorizer *Depolorizer) depolorizeByteSliceValue(target reflect.Type) (reflect.Value, error) {
+	// Depolorize a bytes value
+	bytes, err := depolorizer.DepolorizeBytes()
+	if err != nil {
+		return zeroVal, err
+	}
+
+	// A []byte converts directly into any slice type with a byte element
+	if target.Elem() == byteType {
+		return reflect.ValueOf(bytes), nil
+	}
+
+	// A slice of a named byte type cannot be converted from
+	// a []byte and is filled element-wise. A nil slice stays nil
+	if bytes == nil {
+		return reflect.Zero(target), nil
+	}
+
+	slice := reflect.MakeSlice(target, len(bytes), len(bytes))
+	for i, b := range bytes {
+		slice.Index(i).SetUint(uint64(b))
+	}
+
+	return slice, nil
 }
 
 // depolorizeSliceValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
@@ -489,7 +545,7 @@ func (depolorizer *Depolorizer) depolorizeSliceValue(target reflect.Type) (refle
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the slice elements
-		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
+		pack, err := newLoadDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -543,7 +599,7 @@ func (depolorizer *Depolorizer) depolorizeArrayValue(target reflect.Type) (refle
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the array elements
-		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
+		pack, err := newLoadDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -600,7 +656,7 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the map elements
-		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
+		pack, err := newLoadDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -622,8 +678,15 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 				return zeroVal, err
 			}
 
-			// Create a value for key
-			mapKey := key.Convert(keyType)
+			// Create a value for key based on the nullity of key
+			var mapKey reflect.Value
+			if key == zeroVal {
+				// Create a zero value key
+				mapKey = reflect.New(keyType).Elem()
+			} else {
+				// Reflect value of key and convert type
+				mapKey = key.Convert(keyType)
+			}
 
 			// Create a value for val based on nullity of v
 			var mapVal reflect.Value
@@ -649,18 +712,19 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 		}
 
 		// Decode the wire object into a Document
-		doc, err := data.decodeDocument()
+		doc, err := data.decodeDocument(depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
 
-		valType := target.Elem()
+		keyType, valType := target.Key(), target.Elem()
 		mapping := reflect.MakeMap(target)
 
 		// Iterate over the document elements
 		for key, raw := range doc {
-			// Create a new decoder for the raw value (inherit configuration)
-			decoder, err := NewDepolorizer(raw, inheritCfg(depolorizer.cfg))
+			// Create a new decoder for the raw value (inherits the
+			// configuration and is nested one level below the map)
+			decoder, err := newDepolorizer(raw, depolorizer.cfg, depolorizer.depth+1)
 			if err != nil {
 				return zeroVal, err
 			}
@@ -672,8 +736,8 @@ func (depolorizer *Depolorizer) depolorizeMapValue(target reflect.Type) (reflect
 			}
 
 			if val != zeroVal {
-				// Set the key-value pair into the map value
-				mapping.SetMapIndex(reflect.ValueOf(key), val.Convert(valType))
+				// Set the key-value pair into the map value (the key is converted to the map's key type)
+				mapping.SetMapIndex(reflect.ValueOf(key).Convert(keyType), val.Convert(valType))
 			}
 		}
 
@@ -700,7 +764,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 	switch data.wire {
 	case WirePack:
 		// Get the next element as a pack depolorizer with the struct field elements
-		pack, err := newLoadDepolorizer(data, &depolorizer.cfg)
+		pack, err := newLoadDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -719,12 +783,10 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 				continue
 			}
 
-			// Depolorize the next object from the pack into the map key type
+			// Depolorize the next object from the pack into the field type
 			val, err := pack.depolorizeValue(field.Type)
 			if err != nil {
-				return zeroVal, IncompatibleWireError{
-					fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err),
-				}
+				return zeroVal, newStructFieldError(target, field, err)
 			}
 
 			if val != zeroVal {
@@ -739,7 +801,7 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 			return zeroVal, IncompatibleWireType(data.wire, WireNull, WirePack)
 		}
 
-		doc, err := data.decodeDocument()
+		doc, err := data.decodeDocument(depolorizer.cfg, depolorizer.depth+1)
 		if err != nil {
 			return zeroVal, err
 		}
@@ -773,16 +835,16 @@ func (depolorizer *Depolorizer) depolorizeStructValue(target reflect.Type) (refl
 				continue
 			}
 
-			object, err := NewDepolorizer(data, inheritCfg(depolorizer.cfg))
+			// Create a new decoder for the field data (inherits the
+			// configuration and is nested one level below the struct)
+			object, err := newDepolorizer(data, depolorizer.cfg, depolorizer.depth+1)
 			if err != nil {
 				return zeroVal, err
 			}
 
 			fieldVal, err := object.depolorizeValue(field.Type)
 			if err != nil && !errors.Is(err, errNilValue) {
-				return zeroVal, IncompatibleWireError{
-					fmt.Sprintf("struct field [%v.%v <%v>]: %v", target, field.Name, field.Type, err),
-				}
+				return zeroVal, newStructFieldError(target, field, err)
 			}
 
 			if fieldVal != zeroVal {
@@ -990,7 +1052,7 @@ func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Va
 
 		// Byte Slice
 		if target.Elem().Kind() == reflect.Uint8 {
-			return reflected(depolorizer.DepolorizeBytes())
+			return depolorizer.depolorizeByteSliceValue(target)
 		}
 
 		return depolorizer.depolorizeSliceValue(target)

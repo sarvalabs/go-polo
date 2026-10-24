@@ -49,11 +49,8 @@ func (rb *readbuffer) unpack() (*packbuffer, error) {
 		return nil, errors.New("load convert fail: not a compound wire")
 	}
 
-	// Create a reader from the readbuffer data
-	r := bytes.NewReader(rb.data)
-
-	// Attempt to consume a varint from the reader for the load tag
-	loadtag, _, err := consumeVarint(r)
+	// Attempt to consume a varint from the readbuffer data for the load tag
+	loadtag, consumed, err := consumeVarint(bytes.NewReader(rb.data))
 	if err != nil {
 		return nil, fmt.Errorf("load convert fail: %w", MalformedTagError{err.Error()})
 	}
@@ -63,19 +60,17 @@ func (rb *readbuffer) unpack() (*packbuffer, error) {
 		return nil, errors.New("load convert fail: missing load tag")
 	}
 
-	// Read the number of bytes specified by the load for the header
-	head, err := read(r, int(loadtag>>4))
-	if err != nil {
-		return nil, fmt.Errorf("load convert fail: missing head: %w", err)
+	// The load tag declares the length of the head. Check it against the data that is
+	// actually available before slicing. Compared as uint64 so that a declared length
+	// can neither trigger a huge allocation nor wrap around when converted to an int.
+	rest, headlen := rb.data[consumed:], loadtag>>4
+	if headlen > uint64(len(rest)) {
+		return nil, errors.New("load convert fail: missing head: insufficient data in reader")
 	}
 
-	// Read the remaining bytes in the reader for the body
-	body, _ := read(r, r.Len())
-
-	// Create a new packbuffer and return it
-	lr := newpackbuffer(head, body)
-
-	return lr, nil
+	// Split the rest of the data into the head and the body without copying
+	// (the data of a Depolorizer is private to it, see NewDepolorizer)
+	return newpackbuffer(rest[:headlen], rest[headlen:])
 }
 
 func (rb readbuffer) asAny() Any {
@@ -385,11 +380,11 @@ func (rb readbuffer) decodeBigInt() (*big.Int, error) {
 	}
 }
 
-func (rb readbuffer) decodeDocument() (Document, error) {
+func (rb readbuffer) decodeDocument(cfg wireConfig, depth int) (Document, error) {
 	switch rb.wire {
 	case WireDoc:
-		// Get the next element as a pack depolorizer with the slice elements
-		pack, err := newLoadDepolorizer(rb, nil)
+		// Get the next element as a pack depolorizer with the document elements
+		pack, err := newLoadDepolorizer(rb, cfg, depth)
 		if err != nil {
 			return nil, err
 		}

@@ -73,11 +73,11 @@ func ExamplePolorizeDocument() {
 	// [13 175 1 6 69 182 1 133 2 230 4 165 5 78 97 109 101 6 111 114 97 110 103 101 97 108 105 97 115 14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110 99 111 115 116 3 1 44]
 }
 
-// ExampleDepolorizeDocument_ToDocument is an example of using the Depolorize
+// Example_depolorizeDocumentToDocument is an example of using the Depolorize
 // function to decode a document-encoded wire into a Document object
 //
-//nolint:govet, lll
-func ExampleDepolorizeDocument_ToDocument() {
+//nolint:lll
+func Example_depolorizeDocumentToDocument() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,
@@ -98,11 +98,9 @@ func ExampleDepolorizeDocument_ToDocument() {
 	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
 }
 
-// ExampleDepolorizeDocument_ToStruct is an example of using the Depolorize
+// Example_depolorizeDocumentToStruct is an example of using the Depolorize
 // function to decode a document encoded wire into a Fruit object
-//
-//nolint:govet
-func ExampleDepolorizeDocument_ToStruct() {
+func Example_depolorizeDocumentToStruct() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
 		110, 103, 101, 97, 108, 105, 97, 115, 14, 63, 6, 150, 1, 116, 97, 110, 103, 101, 114,

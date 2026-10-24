@@ -373,6 +373,12 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 		return nil
 	}
 
+	// Check that the map keys can be ordered before sorting them.
+	// (sorting keys of an unsupported type would panic)
+	if unorderable := unorderableKeyType(value.Type().Key()); unorderable != nil {
+		return UnsupportedTypeError(unorderable)
+	}
+
 	// Sort the map keys
 	keys := value.MapKeys()
 	sort.Slice(keys, ValueSort(keys))

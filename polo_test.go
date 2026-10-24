@@ -138,11 +138,11 @@ func (fruit *CustomFruit) Depolorize(depolorizer *Depolorizer) (err error) {
 	return nil
 }
 
-// ExampleCustomEncoding is an example for using custom serialization and deserialization on the
+// Example_customEncoding is an example for using custom serialization and deserialization on the
 // CustomFruit type by implementing the Polorizable and Depolorizable interfaces for it.
 //
-//nolint:govet, lll
-func ExampleCustomEncoding() {
+//nolint:lll
+func Example_customEncoding() {
 	// Create a CustomFruit object
 	orange := &CustomFruit{"orange", 300, []string{"tangerine", "mandarin"}}
 
@@ -172,11 +172,11 @@ func ExampleCustomEncoding() {
 	// &{orange 300 [tangerine mandarin]}
 }
 
-// ExampleWireDecoding is an example for using the Any type to capture
+// Example_wireDecoding is an example for using the Any type to capture
 // the raw POLO encoded bytes for a specific field of the Fruit object.
 //
-//nolint:govet, lll
-func ExampleWireDecoding() {
+//nolint:lll
+func Example_wireDecoding() {
 	// RawFruit is a struct that can capture the raw POLO bytes of each field
 	type RawFruit struct {
 		Name  Any

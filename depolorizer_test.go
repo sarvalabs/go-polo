@@ -80,19 +80,19 @@ func TestNewDepolorizer(t *testing.T) {
 			"null wire",
 			[]byte{0},
 			"",
-			&Depolorizer{data: readbuffer{WireNull, []byte{}}},
+			&Depolorizer{data: readbuffer{WireNull, []byte{}}, cfg: *defaultWireConfig()},
 		},
 		{
 			"posint wire",
 			[]byte{3, 1, 44},
 			"",
-			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}},
+			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}, cfg: *defaultWireConfig()},
 		},
 		{
 			"pack wire",
 			[]byte{14, 47, 3, 35, 1, 44, 250},
 			"",
-			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
+			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}, cfg: *defaultWireConfig()},
 		},
 		{
 			"malformed wire",
@@ -584,13 +584,18 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 		depolorizer, err = depolorizer.DepolorizePacked()
 		require.Nil(t, err)
 
+		// The inner Depolorizer inherits the configuration (and nesting depth) of its parent
 		inner, err := depolorizer.depolorizeInner()
 		assert.Nil(t, err)
-		assert.Equal(t, &Depolorizer{data: readbuffer{WireNull, []byte{}}}, inner)
+
+		expected := &Depolorizer{data: readbuffer{WireNull, []byte{}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		assert.Equal(t, expected, inner)
 
 		inner, err = depolorizer.depolorizeInner()
 		assert.Nil(t, err)
-		assert.Equal(t, &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}}, inner)
+
+		expected = &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		assert.Equal(t, expected, inner)
 
 		_, err = depolorizer.depolorizeInner()
 		assert.EqualError(t, err, "insufficient data in wire for decode")
