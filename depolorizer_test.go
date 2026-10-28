@@ -156,9 +156,10 @@ func TestDepolorizer_DepolorizeAny(t *testing.T) {
 	require.Equal(t, wire, Any{6, 98, 97, 114})
 	require.False(t, depolorizer.Done())
 
+	// A WireNull is a nil Any
 	wire, err = depolorizer.DepolorizeAny()
 	require.NoError(t, err)
-	require.Equal(t, wire, Any{0})
+	require.Nil(t, wire)
 	require.False(t, depolorizer.Done())
 
 	wire, err = depolorizer.DepolorizeAny()
@@ -182,8 +183,10 @@ func TestDepolorizer_DepolorizeRaw(t *testing.T) {
 	require.Equal(t, wire, Raw{6, 102, 111, 111})
 	require.False(t, depolorizer.Done())
 
-	_, err = depolorizer.DepolorizeRaw()
-	require.EqualError(t, err, "incompatible wire: unexpected wiretype 'null'. expected one of: {raw}")
+	// A WireNull is a nil Raw
+	wire, err = depolorizer.DepolorizeRaw()
+	require.NoError(t, err)
+	require.Nil(t, wire)
 	require.False(t, depolorizer.Done())
 
 	_, err = depolorizer.DepolorizeRaw()
@@ -525,6 +528,9 @@ func TestDepolorizer_DepolorizeBigInt(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, value, big.NewInt(-250))
 	assert.True(t, depolorizer.Done())
+
+	_, err = depolorizer.DepolorizeBigInt()
+	assert.EqualError(t, err, "insufficient data in wire for decode")
 }
 
 func TestDepolorizer_DepolorizePacked(t *testing.T) {
@@ -563,8 +569,22 @@ func TestDepolorizer_DepolorizePacked(t *testing.T) {
 		depolorizer, err := NewDepolorizer([]byte{0})
 		require.Nil(t, err)
 
-		_, err = depolorizer.DepolorizePacked()
-		assert.EqualError(t, err, "incompatible wire: unexpected wiretype 'null'. expected one of: {pack, document}")
+		// A WireNull is a nil Depolorizer, which has no elements
+		pack, err := depolorizer.DepolorizePacked()
+		require.NoError(t, err)
+		require.Nil(t, pack)
+		assert.True(t, depolorizer.Done())
+
+		assert.True(t, pack.Done())
+		assert.False(t, pack.IsNull())
+
+		_, err = pack.DepolorizeString()
+		assert.ErrorIs(t, err, ErrInsufficientWire)
+
+		_, err = pack.DepolorizePacked()
+		assert.ErrorIs(t, err, ErrInsufficientWire)
+
+		assert.ErrorIs(t, pack.Depolorize(new(*uint64)), ErrInsufficientWire)
 	})
 
 	t.Run("Incompatible", func(t *testing.T) {
@@ -613,18 +633,28 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 	})
 }
 
-func TestDepolorizer_ZeroValue(t *testing.T) {
+func TestDepolorizer_NullIntoValue(t *testing.T) {
 	type Object struct {
 		A string
 		B string
 	}
 
+	// A WireNull element cannot be decoded into a struct value (only into a pointer)
 	t.Run("Slice", func(t *testing.T) {
 		depolorizer, err := NewDepolorizer([]byte{14, 63, 14, 144, 1, 47, 6, 54, 112, 98, 98, 112, 98, 98})
 		require.Nil(t, err)
 
 		err = depolorizer.Depolorize(new([]Object))
-		assert.Nil(t, err)
+		require.ErrorIs(t, err, ErrNullValue)
+
+		// The same wire decodes into a slice of pointers
+		depolorizer, err = NewDepolorizer([]byte{14, 63, 14, 144, 1, 47, 6, 54, 112, 98, 98, 112, 98, 98})
+		require.Nil(t, err)
+
+		var pointers []*Object
+
+		require.NoError(t, depolorizer.Depolorize(&pointers))
+		assert.Equal(t, []*Object{{"pbb", "pbb"}, nil}, pointers)
 	})
 
 	t.Run("Array", func(t *testing.T) {
@@ -632,15 +662,23 @@ func TestDepolorizer_ZeroValue(t *testing.T) {
 		require.Nil(t, err)
 
 		err = depolorizer.Depolorize(new([2]Object))
-		assert.Nil(t, err)
+		require.ErrorIs(t, err, ErrNullValue)
 	})
 
 	t.Run("Map", func(t *testing.T) {
+		// The value is a WireNull with data, which is never canonical
 		depolorizer, err := NewDepolorizer([]byte{14, 47, 6, 0, 98, 112, 112})
 		require.Nil(t, err)
 
 		err = depolorizer.Depolorize(new(map[string]Object))
-		assert.Nil(t, err)
+		require.EqualError(t, err, "incompatible wire: unexpected data for wiretype 'null'")
+
+		// The map value is a WireNull
+		depolorizer, err = NewDepolorizer([]byte{14, 47, 6, 0})
+		require.Nil(t, err)
+
+		err = depolorizer.Depolorize(new(map[string]Object))
+		require.ErrorIs(t, err, ErrNullValue)
 	})
 
 	t.Run("Struct", func(t *testing.T) {
@@ -648,7 +686,12 @@ func TestDepolorizer_ZeroValue(t *testing.T) {
 		require.Nil(t, err)
 
 		err = depolorizer.Depolorize(new(Object))
-		assert.Nil(t, err)
+		require.ErrorIs(t, err, ErrNullValue)
+		require.EqualError(t, err, "incompatible wire: nil value")
+
+		var wireErr IncompatibleWireError
+
+		require.ErrorAs(t, err, &wireErr)
 	})
 }
 

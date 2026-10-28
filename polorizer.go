@@ -7,7 +7,11 @@ import (
 	"math/big"
 	"reflect"
 	"sort"
+	"unicode/utf8"
 )
+
+// float32Type is the reflect.Type of a float32
+var float32Type = reflect.TypeOf(float32(0))
 
 // Polorizer is an encoding buffer that can sequentially polorize objects into it.
 // It can be collapsed into its bytes with Bytes() or Packed().
@@ -55,6 +59,8 @@ func (polorizer Polorizer) Packed() []byte {
 
 // Polorize encodes a value into the Polorizer.
 // Encodes the object based on its type using the Go reflection.
+// Returns an error that matches ErrInvalidUTF8 if a string, a string map key or
+// a Document key is not valid UTF-8, and an error for a map with a NaN key.
 func (polorizer *Polorizer) Polorize(value any) error {
 	return polorizer.polorizeValue(reflect.ValueOf(value))
 }
@@ -82,6 +88,10 @@ func (polorizer *Polorizer) PolorizeBytes(value []byte) {
 
 // PolorizeString encodes a string value into the Polorizer.
 // Encodes the string as its UTF-8 encoded bytes with the wire type being WireWord.
+//
+// The string must be valid UTF-8 (see utf8.ValidString). PolorizeString does not check it,
+// but the decoder rejects a string that is not valid UTF-8 (ErrInvalidUTF8). Use PolorizeBytes
+// for data that can hold any bytes: the wire is the same and the decoder accepts any bytes for it.
 func (polorizer *Polorizer) PolorizeString(value string) {
 	polorizer.wb.write(WireWord, []byte(value))
 }
@@ -221,6 +231,9 @@ func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 // PolorizeDocument encodes a Document into the Polorizer.
 // Encodes the Document keys and raw values as POLO doc-encoded data with the wire type being WireDoc.
 // If the Document is nil, it is encoded as a WireNull.
+//
+// The keys must be valid UTF-8. PolorizeDocument does not check them, but the decoder rejects
+// a key that is not valid UTF-8 (ErrInvalidUTF8). The reflective Polorize checks them.
 func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Nil Document
 	if document == nil {
@@ -278,6 +291,11 @@ func (polorizer *Polorizer) polorizeStructIntoDoc(value reflect.Value) (Document
 			fieldName = tag
 		}
 
+		// The document key must be valid UTF-8
+		if !utf8.ValidString(fieldName) {
+			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
+		}
+
 		if err := doc.Set(fieldName, value.Field(i).Interface(), inheritCfg(polorizer.cfg)); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
@@ -292,6 +310,11 @@ func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document
 
 	// For each key in the map, encode the value and set it with the string key
 	for _, k := range value.MapKeys() {
+		// The document key must be valid UTF-8
+		if !utf8.ValidString(k.String()) {
+			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
+		}
+
 		if err := doc.Set(k.String(), value.MapIndex(k).Interface(), inheritCfg(polorizer.cfg)); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
@@ -385,8 +408,16 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 		return UnsupportedTypeError(unorderable)
 	}
 
-	// Sort the map keys
+	// Collect the map keys. A NaN key has no order (and a map can hold several of
+	// them), so a map with a NaN key has no canonical encoding and is rejected
 	keys := value.MapKeys()
+	for _, key := range keys {
+		if hasNaN(key) {
+			return IncompatibleValueError{msg: "unsupported map key: NaN"}
+		}
+	}
+
+	// Sort the map keys
 	sort.Slice(keys, ValueSort(keys))
 
 	// Create a new polorizer for the map elements
@@ -470,7 +501,7 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	// Untyped Nil
 	if value == zeroVal {
-		return IncompatibleValueError{"unsupported type: cannot encode untyped nil"}
+		return IncompatibleValueError{msg: "unsupported type: cannot encode untyped nil"}
 	}
 
 	// Nil Pointer
@@ -497,8 +528,12 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	case reflect.Bool:
 		polorizer.PolorizeBool(value.Bool())
 
-	// String
+	// String (must be valid UTF-8)
 	case reflect.String:
+		if !utf8.ValidString(value.String()) {
+			return invalidUTF8ValueError()
+		}
+
 		polorizer.PolorizeString(value.String())
 
 	// Unsigned Integer
@@ -511,7 +546,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// Single Point Float
 	case reflect.Float32:
-		polorizer.PolorizeFloat32(float32(value.Float()))
+		polorizer.PolorizeFloat32(float32Of(value))
 
 	// Double Point Float
 	case reflect.Float64:
@@ -567,9 +602,15 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 			return nil
 		}
 
-		// Check if value is a polo.Document and encode as such
-		if value.Type() == reflect.TypeOf(Document{}) {
+		// Check if value is a polo.Document and encode as such (the keys must be valid UTF-8)
+		if value.Type() == documentType {
 			document, _ := value.Interface().(Document)
+			for key := range document {
+				if !utf8.ValidString(key) {
+					return invalidUTF8ValueError()
+				}
+			}
+
 			polorizer.PolorizeDocument(document)
 
 			return nil
@@ -595,4 +636,17 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	}
 
 	return nil
+}
+
+// float32Of returns the float32 of a reflected float32 value with its bits preserved. reflect.Value.Float
+// converts it to a float64, which turns a signaling NaN into a quiet NaN, so a NaN is read without it.
+func float32Of(value reflect.Value) float32 {
+	if float := value.Float(); !math.IsNaN(float) {
+		// The float64 holds the float32 exactly
+		return float32(float)
+	}
+
+	float, _ := value.Convert(float32Type).Interface().(float32)
+
+	return float
 }

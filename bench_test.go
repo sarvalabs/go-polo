@@ -108,7 +108,7 @@ func BenchmarkDocument(b *testing.B) {
 	b.Run("Doc Decode", func(b *testing.B) {
 		b.Run("Struct", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = Depolorize(newObject, docwire)
+				_ = Depolorize(newObject, docwire, DocStructs())
 			}
 		})
 

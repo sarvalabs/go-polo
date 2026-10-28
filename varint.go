@@ -11,6 +11,7 @@ import (
 var (
 	errVarintTerminated = errors.New("varint terminated prematurely")
 	errVarintOverflow   = errors.New("varint overflows 64-bit integer")
+	errVarintNotMinimal = errors.New("varint is not minimally encoded")
 )
 
 // isBitSize returns whether x is a valid bit-size.
@@ -152,4 +153,20 @@ func consumeVarint(r io.ByteReader) (x uint64, i int, err error) {
 	}
 
 	return x, 11, errVarintOverflow
+}
+
+// consumeTag reads a tag (an encoded unsigned integer) from r and returns it as an uint64.
+// Unlike consumeVarint, the varint must be minimally encoded. A continuation
+// byte that only adds zero bits makes the encoding non-canonical and is an error.
+func consumeTag(r io.ByteReader) (uint64, int, error) {
+	x, n, err := consumeVarint(r)
+	if err != nil {
+		return x, n, err
+	}
+
+	if n != sizeVarint(x) {
+		return x, n, errVarintNotMinimal
+	}
+
+	return x, n, nil
 }
