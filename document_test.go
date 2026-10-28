@@ -503,8 +503,16 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"decode to struct with DocStructs enabled & extra fields",
+			"decode to struct with DocStructs enabled & null field",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
+			new(Object),
+			new(Object),
+			[]EncodingOptions{DocStructs()},
+			"incompatible wire: struct field [polo.Object.B <int>]: incompatible wire: nil value",
+		},
+		{
+			"decode to struct with DocStructs enabled & absent and unknown fields",
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 122, 122, 122, 0},
 			new(Object),
 			&Object{A: 54},
 			[]EncodingOptions{DocStructs()},
@@ -519,12 +527,12 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"decode to map[string]int with DocStringMaps enabled",
+			"decode to map[string]int with DocStringMaps enabled & null value",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
 			new(map[string]int),
-			&map[string]int{"boo": 54, "foo": 0},
+			new(map[string]int),
 			[]EncodingOptions{DocStringMaps()},
-			"",
+			"incompatible wire: nil value",
 		},
 		{
 			"decode to map[string][]string with DocStringMaps enabled",

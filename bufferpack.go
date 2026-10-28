@@ -20,13 +20,25 @@ type packbuffer struct {
 // newpackbuffer creates a new packbuffer for a given head and body slice of bytes.
 // The returned packbuffer is seeded and the next iteration will return the first element of the load.
 // Returns an error if the first tag in the head is malformed or declares an offset outside the body.
+// Returns an error if the framing is not canonical (C6): a pack without elements must
+// not have a body, and the first element must start at the beginning of the body.
 func newpackbuffer(head, body []byte) (*packbuffer, error) {
+	// A pack without elements has nothing in its body
+	if len(head) == 0 && len(body) != 0 {
+		return nil, MalformedTagError{"data in a pack without elements"}
+	}
+
 	// Initialize a packbuffer with a reader over the head data and the body
 	lr := &packbuffer{head: bytes.NewReader(head), body: body}
 
 	// Seed the offset values of the packbuffer by iterating once
 	if _, err := lr.next(); err != nil {
 		return nil, err
+	}
+
+	// The first element must start at offset zero (no bytes before it in the body)
+	if lr.noff > 0 {
+		return nil, MalformedTagError{"non-zero offset for the first element"}
 	}
 
 	return lr, nil
@@ -70,8 +82,8 @@ func (lr *packbuffer) next() (readbuffer, error) {
 		return readbuffer{lr.cw, lr.body[lr.coff:]}, nil
 	}
 
-	// Attempt to consume a varint from the head reader
-	tag, _, err := consumeVarint(lr.head)
+	// Attempt to consume a minimally encoded varint from the head reader
+	tag, _, err := consumeTag(lr.head)
 	if err != nil {
 		return readbuffer{}, MalformedTagError{err.Error()}
 	}

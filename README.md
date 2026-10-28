@@ -30,6 +30,8 @@ go get -u github.com/sarvalabs/go-polo
 ### Deterministic Serialization
 POLO's strict specification is intended to create the same serialized wire for an object regardless of implementation. This is critical for cryptographic security with operations such as hashing which is used to guarantee data consistency and tamper proofing.
 
+Since v0.4.11 the decoder is also strict: it accepts exactly the bytes that the encoder produces, so every value has one encoding (see [Canonical Decoding](#canonical-decoding)).
+
 ### High Wire Efficiency
 POLO has a highly optimized wire format allows messages to be relatively small, even surpassing [Protocol Buffers](https://protobuf.dev/programming-guides/encoding/) occassionaly. This is mainly because it supports a larger type based wire tagging that allows some information (especially metadata) to be passed around inferentially and thus reducing the total amount of information actually present in the wire. 
 
@@ -51,6 +53,48 @@ POLO describes two buffers, `Polorizer` and `Depolorizer` which are write-only a
 
 ### Differential Messaging (Coming Soon)
 POLO's partially encoding and field order based indexing (and string based indexing for document encoded wires) allows the possibility for messaging that only allows the transmission of the difference between two states, this is useful for any version managment system where the same data is incrementally updated and transmitted, the ability to index the difference and only transmit the difference can result in massive reduction in the wire sizes for these use cases that often re-transmit already available information.
+
+## Null Values
+Null means nil. The target type decides what a Null (`WireNull`) decodes to:
+
+- Pointers, slices (also `[]byte`), maps, interfaces, `Document`, `Any` and `Raw` can be nil. A Null decodes to nil, and `Depolorize` sets the target to nil.
+- For a pointer, go-polo consumes the Null and returns a nil pointer before it decodes the element type. A custom `Depolorize` method of the element type is not called.
+- Booleans, integers, floats, strings, arrays, structs and `big.Int` values cannot be nil. A Null is an error at every level (top level, struct field, slice, array or map element). The error matches `polo.ErrNullValue` with `errors.Is`.
+- A type that is not a pointer and has a custom `Depolorize` method receives the Null and decides for itself.
+
+The typed `Depolorizer` methods follow the same rule. `DepolorizeBytes`, `DepolorizeBigInt`, `DepolorizeDocument`, `DepolorizeAny`, `DepolorizeRaw` and `DepolorizePacked` return nil for a Null. A nil `*Depolorizer` has no elements. `DepolorizeBool`, `DepolorizeString`, the integer and float methods and `DepolorizeBytes32` return an error that matches `polo.ErrNullValue`.
+
+## Strings and Bytes
+The wire is the same for strings and bytes. A POLO string is always valid UTF-8; data that may hold any bytes is encoded as bytes.
+
+`WireWord` carries both, and the target type decides:
+
+- Decoded into a string (`string`, a named string type, a string map key or a `Document` key), the data must be valid UTF-8 (`utf8.Valid`). Otherwise the error matches `polo.ErrInvalidUTF8`. There is no normalization: NUL, the byte order mark and U+FFFD are ordinary characters.
+- Decoded into bytes (`[]byte`, `[N]byte`, `Raw` or `Any`), the data can be any bytes.
+
+| `WireWord` data | `utf8.Valid` | into a string | into bytes |
+|---|---|---|---|
+| empty, `61`, `00` (NUL), `efbbbf` (BOM), `efbfbd` (U+FFFD), `f09f9880`, `f48fbfbf` (U+10FFFF) | yes | accepted | accepted |
+| `ff`, `80` (lone continuation byte), `c3` (truncated), `61ff62` | no | error | accepted |
+| `c080`, `e080af`, `f0808080` (overlong) | no | error | accepted |
+| `eda080`, `edbfbf` (surrogates) | no | error | accepted |
+| `f4908080` (above U+10FFFF), `f5808080`, `f888808080` (5-byte form) | no | error | accepted |
+
+The encoder applies the same rule: `Polorize` returns an error that matches `polo.ErrInvalidUTF8` for a string, a string map key or a `Document` key that is not valid UTF-8. `Polorizer.PolorizeString` does not check: the caller must pass valid UTF-8, or the result does not decode as a string.
+
+A field that can hold any bytes must be a `[]byte`. Changing a field from `string` to `[]byte` does not change the wire.
+
+## Canonical Decoding
+The decoder accepts exactly the bytes that the encoder produces, so `Polorize(Depolorize(wire)) == wire` for every wire that decodes with the default options:
+
+- Tag varints are minimally encoded, and the offset of a top-level tag is zero.
+- Integers have no leading zero byte, zero is an empty `WirePosInt` and negative zero is an error. The value must fit the target type (`int8` accepts -128 to 127). `math.MinInt64` decodes.
+- `WireNull`, `WireFalse` and `WireTrue` have no data.
+- A `[N]byte` needs exactly N bytes, a `[N]T` exactly N elements, and a float exactly 4 or 8 bytes. NaN decodes and keeps its bits.
+- In a pack, the first element starts at offset zero. A struct pack has exactly one element for every exported field that is not skipped.
+- Map keys and document keys are in strictly ascending order, without duplicates. NaN map keys are rejected on encode and decode.
+
+The options `DocStructs`, `DocStringMaps` and `PackedBytes` accept two forms by design (a pack or a document, a word or a pack). Documents are the extensible format: a struct decoded from a document (`DocStructs`) ignores unknown keys and leaves absent fields at their zero values.
 
 ## Examples
 ### Simple Polorization & Depolorization (Encoding/Decoding)
