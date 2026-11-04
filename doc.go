@@ -59,9 +59,9 @@
 //
 // # Canonical decoding
 //
-// Every value has exactly one encoding. The decoder accepts exactly the bytes that the encoder produces,
-// so Polorize(Depolorize(wire)) == wire for every wire that decodes with the default options.
-// Other wires are errors:
+// Every value has exactly one encoding. Up to the nesting limit (see MaxDepth), the decoder accepts exactly
+// the bytes that the encoder produces, so Polorize(Depolorize(wire)) == wire for every wire that decodes
+// with the default options. Other wires are errors:
 //
 //   - Varints in tags (the top-level tag, load tags and head tags) are minimally encoded.
 //   - The offset in a top-level tag is zero.
@@ -85,6 +85,10 @@
 // map as a pack or as a document, and bytes as a word or as a pack. Documents are the extensible format:
 // when a struct is decoded from a document (DocStructs), the decoder ignores unknown keys and leaves the
 // fields of absent keys at their zero values. Any and Raw
-// hold encoded data as is: the decoder only checks the tag of an Any, not its content. A nil Raw is
-// written as Raw{0} (a WireRaw that holds a Null), so a Null decodes to a nil Raw that encodes as Raw{0}.
+// hold encoded data as is: the decoder only checks the tag of an Any, not its content. A Null decodes to
+// a nil Raw, and Polorize writes a nil Raw as a Null. Polorizer.PolorizeRaw writes a nil Raw as Raw{0}
+// (a WireRaw that holds a Null), which is a different wire.
+//
+// The encoder has no nesting limit. It can write a wire with more levels than the decoder accepts
+// (DefaultMaxDepth, or the value of MaxDepth), and the decoder rejects that wire with ErrMaxDepthExceeded.
 package polo

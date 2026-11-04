@@ -123,7 +123,7 @@ func (depolorizer *Depolorizer) Done() bool {
 func (depolorizer *Depolorizer) IsNull() bool {
 	wire, ok := depolorizer.peek()
 
-	return ok && wire.IsNull()
+	return ok && wire == WireNull
 }
 
 // peek returns the WireType of the next element in the Depolorizer without consuming it.

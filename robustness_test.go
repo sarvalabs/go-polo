@@ -323,11 +323,29 @@ func TestDepolorize_MaxDepth(t *testing.T) {
 	t.Run("default limit", func(t *testing.T) {
 		var tree Tree
 
+		// rs-polo has the same default. Change both together
+		require.Equal(t, 1000, DefaultMaxDepth)
+
 		// nestedPackWire(seed, n) is n+1 packs deep
 		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth-1)))
 
 		err := Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth))
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
+	})
+
+	t.Run("encoder has no limit", func(t *testing.T) {
+		tree := Tree{}
+		for range DefaultMaxDepth {
+			tree = Tree{tree}
+		}
+
+		wire, err := Polorize(tree)
+		require.NoError(t, err)
+
+		var decoded Tree
+
+		require.ErrorIs(t, Depolorize(&decoded, wire), ErrMaxDepthExceeded)
+		require.NoError(t, Depolorize(&decoded, wire, MaxDepth(0)))
 	})
 
 	t.Run("custom limit", func(t *testing.T) {
@@ -476,8 +494,8 @@ func TestDepolorize_NestedStructFieldError(t *testing.T) {
 	})
 
 	t.Run("deep", func(t *testing.T) {
-		// A chain of 5000 nodes that ends with a word instead of a node
-		err := Depolorize(new(Node), nestedPackWire(wordPackWire, 5000))
+		// A chain of 5000 nodes that ends with a word instead of a node. This is above the default limit
+		err := Depolorize(new(Node), nestedPackWire(wordPackWire, 5000), MaxDepth(0))
 		require.Error(t, err)
 
 		prefix := "incompatible wire: struct field [polo.Node.Next <*polo.Node>]: "

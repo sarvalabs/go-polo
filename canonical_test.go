@@ -1,6 +1,6 @@
 package polo
 
-// Tests for the decoding rules of v0.4.11: integer bounds and NaN (GO-1, GO-6, GO-10), Null semantics (N1-N3),
+// Tests for the decoding rules of v0.5.0: integer bounds and NaN (GO-1, GO-6, GO-10), Null semantics (N1-N3),
 // canonical decoding (C1-C7) and UTF-8 strings (U1, U2). Every wire that the decoder accepts must encode back
 // into the same bytes, so that every value has exactly one encoding (see FuzzCanonical).
 
@@ -532,6 +532,23 @@ func TestN3_TypedMethods(t *testing.T) {
 		require.False(t, depolorizer.IsNull())
 	})
 
+	t.Run("nil raw", func(t *testing.T) {
+		// Polorize writes a nil Raw as a Null, and a Null decodes to a nil Raw
+		wire, err := Polorize(Raw(nil))
+		require.NoError(t, err)
+		require.Equal(t, []byte{0}, wire)
+
+		raw := Raw{1}
+
+		require.NoError(t, Depolorize(&raw, wire))
+		require.Nil(t, raw)
+
+		// PolorizeRaw writes a nil Raw as a WireRaw that holds a Null, which is a different wire
+		polorizer := NewPolorizer()
+		polorizer.PolorizeRaw(nil)
+		require.Equal(t, []byte{5, 0}, polorizer.Bytes())
+	})
+
 	t.Run("interface", func(t *testing.T) {
 		// An interface can only be decoded from a WireNull
 		var object any = 5
@@ -1032,8 +1049,8 @@ type (
 	canonicalInt   int16
 )
 
-// canonicalObject covers the kinds of values that the reflective codec supports. Custom
-// Depolorizable types and Raw values (a nil Raw is written as Raw{0}) are not covered.
+// canonicalObject covers the kinds of values that the reflective codec supports.
+// Custom Depolorizable types and Raw values are not covered.
 type canonicalObject struct {
 	B    bool
 	S    string

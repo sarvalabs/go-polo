@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.4.11 (unreleased)
+## v0.5.0 (unreleased)
 
 The decoder is now canonical: it accepts exactly the bytes that the encoder produces, so every value
 has one encoding. Null and UTF-8 handling follow one rule each. The encoder writes the same bytes as
@@ -16,6 +16,7 @@ v0.4.10 for every value it encodes, with the exceptions listed under "Behaviour 
 - GO-12: a string must be valid UTF-8, on decode and on encode.
 - go-pisa #130: a Null decodes to a nil pointer before a custom `Depolorize` method is called.
 - `IsNull` returns false when no elements are left, as documented (it used to report the last element of an atomic `Depolorizer`).
+- `Depolorizer.IsNull` returns false for the reserved wire types 8 to 12, as documented. It used to return true, so a custom `Depolorize` method that checks `IsNull` could accept a reserved wire type as a Null. `WireType.IsNull` does not change.
 
 ### Added
 
@@ -55,6 +56,9 @@ Null now decodes to nil for `Any` (it used to give `Any{0}`) and for `Raw`, `Dep
 - **A DocStructs field with a Null value** is an error unless the field can be nil. It used to be skipped.
 - **A map value from a document (DocStringMaps) that is Null** is kept as a nil entry. It used to be dropped.
 - **A float32 signaling NaN** keeps its bits on encode. It used to be written as a quiet NaN.
+- **A wire with more than 1,000 nesting levels** is an error with the default options (`ErrMaxDepthExceeded`).
+  `DefaultMaxDepth` is now 1,000 (it was 10,000), because 10,000 levels overflow a 2 MiB thread stack in rs-polo
+  and both libraries keep the same limit. Use `MaxDepth` to set another limit.
 
 ## v0.4.10
 

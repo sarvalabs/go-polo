@@ -30,7 +30,7 @@ go get -u github.com/sarvalabs/go-polo
 ### Deterministic Serialization
 POLO's strict specification is intended to create the same serialized wire for an object regardless of implementation. This is critical for cryptographic security with operations such as hashing which is used to guarantee data consistency and tamper proofing.
 
-Since v0.4.11 the decoder is also strict: it accepts exactly the bytes that the encoder produces, so every value has one encoding (see [Canonical Decoding](#canonical-decoding)).
+Since v0.5.0 the decoder is also strict: it accepts exactly the bytes that the encoder produces, so every value has one encoding (see [Canonical Decoding](#canonical-decoding)).
 
 ### High Wire Efficiency
 POLO has a highly optimized wire format allows messages to be relatively small, even surpassing [Protocol Buffers](https://protobuf.dev/programming-guides/encoding/) occassionaly. This is mainly because it supports a larger type based wire tagging that allows some information (especially metadata) to be passed around inferentially and thus reducing the total amount of information actually present in the wire. 
@@ -85,7 +85,7 @@ The encoder applies the same rule: `Polorize` returns an error that matches `pol
 A field that can hold any bytes must be a `[]byte`. Changing a field from `string` to `[]byte` does not change the wire.
 
 ## Canonical Decoding
-The decoder accepts exactly the bytes that the encoder produces, so `Polorize(Depolorize(wire)) == wire` for every wire that decodes with the default options:
+Up to the nesting limit, the decoder accepts exactly the bytes that the encoder produces, so `Polorize(Depolorize(wire)) == wire` for every wire that decodes with the default options:
 
 - Tag varints are minimally encoded, and the offset of a top-level tag is zero.
 - Integers have no leading zero byte, zero is an empty `WirePosInt` and negative zero is an error. The value must fit the target type (`int8` accepts -128 to 127). `math.MinInt64` decodes.
@@ -95,6 +95,8 @@ The decoder accepts exactly the bytes that the encoder produces, so `Polorize(De
 - Map keys and document keys are in strictly ascending order, without duplicates. NaN map keys are rejected on encode and decode.
 
 The options `DocStructs`, `DocStringMaps` and `PackedBytes` accept two forms by design (a pack or a document, a word or a pack). Documents are the extensible format: a struct decoded from a document (`DocStructs`) ignores unknown keys and leaves absent fields at their zero values.
+
+The encoder has no nesting limit. It can write a wire with more levels than the decoder accepts (`DefaultMaxDepth`, or the value of `MaxDepth`), and the decoder rejects that wire with `ErrMaxDepthExceeded`.
 
 ## Examples
 ### Simple Polorization & Depolorization (Encoding/Decoding)

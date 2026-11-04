@@ -278,7 +278,7 @@ func fuzzRaw(val *Raw, c fuzz.Continue) {
 		anybytes = Any{0}
 	}
 
-	// Raw{0} is how the encoder writes a nil Raw. Decoding it gives Raw{0}
+	// Raw{0} is how PolorizeRaw writes a nil Raw. Decoding it gives Raw{0}
 
 	*val = Raw(anybytes)
 }

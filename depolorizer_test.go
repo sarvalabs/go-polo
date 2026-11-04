@@ -707,6 +707,14 @@ func TestDepolorizer_IsNull(t *testing.T) {
 		{"Packed_Null", []byte{14, 31, 0}, true, true},
 		{"Packed_NotNull", []byte{14, 47, 3, 1, 44}, true, false},
 		{"Packed_Empty", []byte{14, 15}, true, false},
+		// A reserved wire type is not a WireNull
+		{"NonPacked_Reserved8", []byte{8}, false, false},
+		{"NonPacked_Reserved9", []byte{9}, false, false},
+		{"NonPacked_Reserved10", []byte{10}, false, false},
+		{"NonPacked_Reserved11", []byte{11}, false, false},
+		{"NonPacked_Reserved12", []byte{12}, false, false},
+		{"Packed_Reserved8", []byte{14, 31, 8}, true, false},
+		{"Packed_Reserved12", []byte{14, 31, 12}, true, false},
 	}
 
 	for _, tt := range tests {
