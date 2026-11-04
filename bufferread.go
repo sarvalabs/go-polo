@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"unicode/utf8"
 )
 
 // readbuffer is a read-only buffer that is obtained from a single tag and its body.
@@ -41,7 +40,7 @@ func newreadbuffer(b []byte) (readbuffer, error) {
 // Throws an error if the tag is malformed or not canonical.
 func newcanonicalbuffer(b []byte) (readbuffer, error) {
 	// Attempt to consume a minimally encoded varint from the data
-	tag, consumed, err := consumeTag(bytes.NewReader(b))
+	tag, consumed, err := consumeTag(b)
 	if err != nil {
 		return readbuffer{}, MalformedTagError{err.Error()}
 	}
@@ -86,7 +85,7 @@ func (rb *readbuffer) unpack() (*packbuffer, error) {
 	}
 
 	// Attempt to consume a minimally encoded varint from the readbuffer data for the load tag
-	loadtag, consumed, err := consumeTag(bytes.NewReader(rb.data))
+	loadtag, consumed, err := consumeTag(rb.data)
 	if err != nil {
 		return nil, fmt.Errorf("load convert fail: %w", MalformedTagError{err.Error()})
 	}
@@ -248,7 +247,7 @@ func (rb readbuffer) decodeString() (string, error) {
 	switch rb.wire {
 	// Convert []byte to string
 	case WireWord:
-		if !utf8.Valid(rb.data) {
+		if !validBytes(rb.data) {
 			return "", invalidUTF8WireError()
 		}
 

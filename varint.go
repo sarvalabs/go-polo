@@ -155,18 +155,35 @@ func consumeVarint(r io.ByteReader) (x uint64, i int, err error) {
 	return x, 11, errVarintOverflow
 }
 
-// consumeTag reads a tag (an encoded unsigned integer) from r and returns it as an uint64.
+// consumeTag reads a tag (an encoded unsigned integer) from the start of b and returns it as an uint64,
+// together with the number of bytes it read. It reads b directly, so that it does not allocate.
 // Unlike consumeVarint, the varint must be minimally encoded. A continuation
 // byte that only adds zero bits makes the encoding non-canonical and is an error.
-func consumeTag(r io.ByteReader) (uint64, int, error) {
-	x, n, err := consumeVarint(r)
-	if err != nil {
-		return x, n, err
+func consumeTag(b []byte) (x uint64, n int, err error) {
+	var s uint
+
+	for i := range binary.MaxVarintLen64 {
+		if i == len(b) {
+			return x, i, errVarintTerminated
+		}
+
+		c := b[i]
+		if c < 0x80 {
+			if i == binary.MaxVarintLen64-1 && c > 1 {
+				return x, i + 1, errVarintOverflow
+			}
+
+			// A last byte of zero after a continuation byte adds only zero bits
+			if c == 0 && i > 0 {
+				return x, i + 1, errVarintNotMinimal
+			}
+
+			return x | uint64(c)<<s, i + 1, nil
+		}
+
+		x |= uint64(c&0x7f) << s
+		s += 7
 	}
 
-	if n != sizeVarint(x) {
-		return x, n, errVarintNotMinimal
-	}
-
-	return x, n, nil
+	return x, binary.MaxVarintLen64, errVarintOverflow
 }

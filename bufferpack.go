@@ -1,13 +1,9 @@
 package polo
 
-import (
-	"bytes"
-)
-
 // packbuffer is a read-only buffer that is obtained from a compound wire (pack).
 // Iteration over the packbuffer will return elements from the load one by one.
 type packbuffer struct {
-	head *bytes.Reader
+	head []byte // the tags of the head that are not read yet
 	body []byte
 
 	coff int // represents the offset position for the current element
@@ -28,8 +24,8 @@ func newpackbuffer(head, body []byte) (*packbuffer, error) {
 		return nil, MalformedTagError{"data in a pack without elements"}
 	}
 
-	// Initialize a packbuffer with a reader over the head data and the body
-	lr := &packbuffer{head: bytes.NewReader(head), body: body}
+	// Initialize a packbuffer with the head data and the body
+	lr := &packbuffer{head: head, body: body}
 
 	// Seed the offset values of the packbuffer by iterating once
 	if _, err := lr.next(); err != nil {
@@ -65,8 +61,8 @@ func (lr *packbuffer) peek() (WireType, bool) {
 // Returns an error if the tag for the next element is malformed or if its offset
 // precedes the offset of the current element or lies outside the body.
 func (lr *packbuffer) next() (readbuffer, error) {
-	// Check if the head reader is exhausted
-	if lr.head.Len() == 0 {
+	// Check if all tags of the head are read
+	if len(lr.head) == 0 {
 		// Check if load reader is done
 		if lr.done() {
 			return readbuffer{}, ErrInsufficientWire
@@ -82,8 +78,10 @@ func (lr *packbuffer) next() (readbuffer, error) {
 		return readbuffer{lr.cw, lr.body[lr.coff:]}, nil
 	}
 
-	// Attempt to consume a minimally encoded varint from the head reader
-	tag, _, err := consumeTag(lr.head)
+	// Attempt to consume a minimally encoded varint from the head, and move past the bytes it read
+	tag, consumed, err := consumeTag(lr.head)
+	lr.head = lr.head[consumed:]
+
 	if err != nil {
 		return readbuffer{}, MalformedTagError{err.Error()}
 	}

@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"reflect"
 	"sort"
-	"unicode/utf8"
 )
 
 // float32Type is the reflect.Type of a float32
@@ -292,7 +291,7 @@ func (polorizer *Polorizer) polorizeStructIntoDoc(value reflect.Value) (Document
 		}
 
 		// The document key must be valid UTF-8
-		if !utf8.ValidString(fieldName) {
+		if !validString(fieldName) {
 			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
 		}
 
@@ -311,7 +310,7 @@ func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document
 	// For each key in the map, encode the value and set it with the string key
 	for _, k := range value.MapKeys() {
 		// The document key must be valid UTF-8
-		if !utf8.ValidString(k.String()) {
+		if !validString(k.String()) {
 			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
 		}
 
@@ -530,7 +529,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// String (must be valid UTF-8)
 	case reflect.String:
-		if !utf8.ValidString(value.String()) {
+		if !validString(value.String()) {
 			return invalidUTF8ValueError()
 		}
 
@@ -606,7 +605,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 		if value.Type() == documentType {
 			document, _ := value.Interface().(Document)
 			for key := range document {
-				if !utf8.ValidString(key) {
+				if !validString(key) {
 					return invalidUTF8ValueError()
 				}
 			}
