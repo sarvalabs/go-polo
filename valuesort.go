@@ -1,6 +1,9 @@
 package polo
 
-import "reflect"
+import (
+	"math"
+	"reflect"
+)
 
 // ValueSort is used by the sort package to sort a slice of reflect.Value objects.
 // Assumes that the reflect.Value objects can only be types which are comparable
@@ -158,6 +161,39 @@ func unorderableKeyType(t reflect.Type) reflect.Type {
 	default:
 		return t
 	}
+}
+
+// hasNaN returns whether a map key value is a NaN float or an array that contains one (recursively).
+// A NaN key has no order, so a map with a NaN key has no canonical encoding.
+func hasNaN(value reflect.Value) bool {
+	switch value.Kind() {
+	case reflect.Float32, reflect.Float64:
+		return math.IsNaN(value.Float())
+
+	case reflect.Array:
+		// Only an array of floats (or of arrays of floats) can hold a NaN
+		if !mayHoldNaN(value.Type()) {
+			return false
+		}
+
+		for i := range value.Len() {
+			if hasNaN(value.Index(i)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// mayHoldNaN returns whether a value of the given type can be or hold a NaN:
+// a float or an array of floats (recursively).
+func mayHoldNaN(t reflect.Type) bool {
+	for t.Kind() == reflect.Array {
+		t = t.Elem()
+	}
+
+	return t.Kind() == reflect.Float32 || t.Kind() == reflect.Float64
 }
 
 // Key is an indexed reflect value. Preserves the original index of key.
