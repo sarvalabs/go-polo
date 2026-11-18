@@ -15,7 +15,8 @@ type wireConfig struct {
 
 // DefaultMaxDepth is the default maximum nesting depth of compound wires for decoding.
 // It bounds the recursion of the decoder so that a deeply nested wire cannot overflow the stack.
-const DefaultMaxDepth = 10000
+// rs-polo has the same default, so change both together: 1000 levels decode and 1001 levels are errors.
+const DefaultMaxDepth = 1000
 
 // defaultConfig returns a default wireConfig object
 func defaultWireConfig() *wireConfig {

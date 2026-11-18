@@ -3,6 +3,7 @@ package polo
 import (
 	"fmt"
 	"log"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -239,6 +240,41 @@ func TestDocument_Get(t *testing.T) {
 	// Test error string
 	err = doc.Get("bar", &foo)
 	assert.EqualError(t, err, "document value could not be decoded for key 'bar': incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}") //nolint:lll
+}
+
+func TestDocument_GetOptions(t *testing.T) {
+	// Get decodes with the options that Set used for the value
+	type Pair struct {
+		A uint64
+		B string
+	}
+
+	type Bytes struct{ B []byte }
+
+	tests := []struct {
+		name   string
+		option EncodingOptions
+		value  any
+		target any
+	}{
+		{"DocStructs", DocStructs(), Pair{A: 1, B: "x"}, new(Pair)},
+		{"PackedBytes", PackedBytes(), Bytes{B: []byte{1, 2}}, new(Bytes)},
+		{"DocStringMaps", DocStringMaps(), map[string]uint64{"a": 1}, new(map[string]uint64)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			doc := make(Document)
+			require.NoError(t, doc.Set("k", test.value, test.option))
+
+			// Without the option, the decoder rejects the wire (an agreement needs the option)
+			require.Error(t, doc.Get("k", test.target))
+
+			// With the option, Get decodes the value
+			require.NoError(t, doc.Get("k", test.target, test.option))
+			require.Equal(t, test.value, reflect.ValueOf(test.target).Elem().Interface())
+		})
+	}
 }
 
 //nolint:lll
@@ -503,8 +539,16 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"decode to struct with DocStructs enabled & extra fields",
+			"decode to struct with DocStructs enabled & null field",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
+			new(Object),
+			new(Object),
+			[]EncodingOptions{DocStructs()},
+			"incompatible wire: struct field [polo.Object.B <int>]: incompatible wire: nil value",
+		},
+		{
+			"decode to struct with DocStructs enabled & absent and unknown fields",
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 122, 122, 122, 0},
 			new(Object),
 			&Object{A: 54},
 			[]EncodingOptions{DocStructs()},
@@ -519,12 +563,12 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 			"",
 		},
 		{
-			"decode to map[string]int with DocStringMaps enabled",
+			"decode to map[string]int with DocStringMaps enabled & null value",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
 			new(map[string]int),
-			&map[string]int{"boo": 54, "foo": 0},
+			new(map[string]int),
 			[]EncodingOptions{DocStringMaps()},
-			"",
+			"incompatible wire: nil value",
 		},
 		{
 			"decode to map[string][]string with DocStringMaps enabled",

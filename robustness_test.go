@@ -3,6 +3,7 @@ package polo
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -15,11 +16,11 @@ import (
 // All of the decoder cases are reachable from untrusted wire data.
 
 // hexWire decodes a hex string into a wire
-func hexWire(t *testing.T, s string) []byte {
-	t.Helper()
+func hexWire(tb testing.TB, s string) []byte {
+	tb.Helper()
 
 	wire, err := hex.DecodeString(s)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return wire
 }
@@ -107,7 +108,7 @@ func TestDepolorize_ElementOffsetOutOfBounds(t *testing.T) {
 		target any
 	}{
 		{"offset past body", hexWire(t, "0e2f0313"), new([]uint64)},
-		{"offset before current element", hexWire(t, "0e2f23030e0f"), new([]uint64)},
+		{"offset before current element", hexWire(t, "0e3f03130305"), new([]uint64)},
 		{"last element past body", hexWire(t, "0e1f33"), new([]uint64)},
 		{"first element past body", hexWire(t, "0e1f33"), new([2]uint64)},
 		{"nested pack", hexWire(t, "0e1f0e1f33"), new([][]uint64)},
@@ -153,32 +154,31 @@ func TestDepolorize_NullMapKey(t *testing.T) {
 	type Key struct{ A uint64 }
 
 	t.Run("byte array key", func(t *testing.T) {
-		// pack of a null key and a null value
+		// pack of a null key and a null value: a byte array key cannot be nil
 		var nulls map[[32]byte][32]byte
 
-		require.NoError(t, Depolorize(&nulls, hexWire(t, "0e2f0000")))
-		assert.Equal(t, map[[32]byte][32]byte{{}: {}}, nulls)
+		require.ErrorIs(t, Depolorize(&nulls, hexWire(t, "0e2f0000")), ErrNullValue)
 
 		// pack of a null key and the integer 0
 		var zero map[[32]byte]uint64
 
-		require.NoError(t, Depolorize(&zero, hexWire(t, "0e2f0003")))
-		assert.Equal(t, map[[32]byte]uint64{{}: 0}, zero)
+		require.ErrorIs(t, Depolorize(&zero, hexWire(t, "0e2f0003")), ErrNullValue)
 	})
 
 	t.Run("struct key", func(t *testing.T) {
+		// The encoder cannot order struct keys, so the decoder does not accept them either
 		var object map[Key]Key
 
-		require.NoError(t, Depolorize(&object, hexWire(t, "0e2f0000")))
-		assert.Equal(t, map[Key]Key{{}: {}}, object)
+		err := Depolorize(&object, hexWire(t, "0e2f0000"))
+		require.EqualError(t, err, "incompatible value error: unsupported type: polo.Key [struct]")
 	})
 
 	t.Run("pointer key", func(t *testing.T) {
 		// pack of a null key and the word "nil"
 		var object map[*uint64]string
 
-		require.NoError(t, Depolorize(&object, hexWire(t, "0e2f00066e696c")))
-		assert.Equal(t, map[*uint64]string{nil: "nil"}, object)
+		err := Depolorize(&object, hexWire(t, "0e2f00066e696c"))
+		require.EqualError(t, err, "incompatible value error: unsupported type: *uint64 [ptr]")
 	})
 }
 
@@ -214,11 +214,10 @@ func TestDepolorize_NamedByteElements(t *testing.T) {
 			require.NoError(t, Depolorize(&flags, wire, options...))
 			assert.Equal(t, FlagArray{1, 2, 3, 4}, flags)
 
-			// A null wire decodes into a zero array
+			// A null wire cannot be decoded into an array
 			var null FlagArray
 
-			require.NoError(t, Depolorize(&null, []byte{0}, options...))
-			assert.Equal(t, FlagArray{}, null)
+			require.ErrorIs(t, Depolorize(&null, []byte{0}, options...), ErrNullValue)
 		})
 	}
 
@@ -324,11 +323,29 @@ func TestDepolorize_MaxDepth(t *testing.T) {
 	t.Run("default limit", func(t *testing.T) {
 		var tree Tree
 
+		// rs-polo has the same default. Change both together
+		require.Equal(t, 1000, DefaultMaxDepth)
+
 		// nestedPackWire(seed, n) is n+1 packs deep
 		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth-1)))
 
 		err := Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth))
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
+	})
+
+	t.Run("encoder has no limit", func(t *testing.T) {
+		tree := Tree{}
+		for range DefaultMaxDepth {
+			tree = Tree{tree}
+		}
+
+		wire, err := Polorize(tree)
+		require.NoError(t, err)
+
+		var decoded Tree
+
+		require.ErrorIs(t, Depolorize(&decoded, wire), ErrMaxDepthExceeded)
+		require.NoError(t, Depolorize(&decoded, wire, MaxDepth(0)))
 	})
 
 	t.Run("custom limit", func(t *testing.T) {
@@ -344,6 +361,13 @@ func TestDepolorize_MaxDepth(t *testing.T) {
 		var tree Tree
 
 		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth), MaxDepth(0)))
+	})
+
+	t.Run("limit above int32", func(t *testing.T) {
+		var tree Tree
+
+		// The limit is capped at math.MaxInt32
+		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth), MaxDepth(math.MaxInt64)))
 	})
 
 	t.Run("recursive struct", func(t *testing.T) {
@@ -470,8 +494,8 @@ func TestDepolorize_NestedStructFieldError(t *testing.T) {
 	})
 
 	t.Run("deep", func(t *testing.T) {
-		// A chain of 5000 nodes that ends with a word instead of a node
-		err := Depolorize(new(Node), nestedPackWire(wordPackWire, 5000))
+		// A chain of 5000 nodes that ends with a word instead of a node. This is above the default limit
+		err := Depolorize(new(Node), nestedPackWire(wordPackWire, 5000), MaxDepth(0))
 		require.Error(t, err)
 
 		prefix := "incompatible wire: struct field [polo.Node.Next <*polo.Node>]: "
