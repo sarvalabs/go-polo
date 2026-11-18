@@ -1130,15 +1130,14 @@ func TestNullWire(t *testing.T) {
 		value := uint64(5)
 
 		targets := map[string]any{
-			"Pointer":   &[]*uint64{&value}[0],
-			"BigInt":    &[]*big.Int{big.NewInt(5)}[0],
-			"Slice":     &[]string{"a"},
-			"Bytes":     &[]byte{1},
-			"Map":       &map[string]string{"a": "b"},
-			"Document":  &Document{"a": Raw{0}},
-			"Any":       &Any{3, 5},
-			"Raw":       &Raw{3, 5},
-			"Interface": &[]any{5}[0],
+			"Pointer":  &[]*uint64{&value}[0],
+			"BigInt":   &[]*big.Int{big.NewInt(5)}[0],
+			"Slice":    &[]string{"a"},
+			"Bytes":    &[]byte{1},
+			"Map":      &map[string]string{"a": "b"},
+			"Document": &Document{"a": Raw{0}},
+			"Any":      &Any{3, 5},
+			"Raw":      &Raw{3, 5},
 		}
 
 		for name, target := range targets {

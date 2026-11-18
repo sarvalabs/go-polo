@@ -78,7 +78,8 @@ func (doc Document) SetRaw(key string, val Raw) {
 // Get retrieves some object for some given key from a Document.
 // The data for the given key is decoded from its POLO form into the given object which must be a pointer.
 // Returns an error if there is no data for the key or if the data could not be decoded into the given object.
-func (doc Document) Get(key string, object any) error {
+// Accepts EncodingOptions to modify the decoding behaviour. Give the same options that Set used for the value.
+func (doc Document) Get(key string, object any, options ...EncodingOptions) error {
 	// Retrieve the data for the key and error if unavailable
 	var data []byte
 	if data = doc.GetRaw(key); data == nil {
@@ -86,7 +87,7 @@ func (doc Document) Get(key string, object any) error {
 	}
 
 	// Depolorize the data into the given object and return any error
-	if err := Depolorize(object, data); err != nil {
+	if err := Depolorize(object, data, options...); err != nil {
 		return fmt.Errorf("document value could not be decoded for key '%v': %w", key, err)
 	}
 

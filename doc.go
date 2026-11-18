@@ -9,7 +9,7 @@
 //
 // Null (WireNull) means nil. The target type decides what a Null decodes to:
 //
-//   - Pointers, slices (also []byte), maps, interfaces, Document, Any and Raw can be nil.
+//   - Pointers, slices (also []byte), maps, Document, Any and Raw can be nil.
 //     A Null decodes to nil. Depolorize overwrites the target, so a Null sets it to nil.
 //   - For a pointer, the decoder consumes a Null and returns a nil pointer before it decodes the
 //     element type. A custom Depolorize method of the element type is not called for a Null.
@@ -18,6 +18,9 @@
 //     array or map. The error is an IncompatibleWireError and matches ErrNullValue with errors.Is.
 //   - A type that is not a pointer and has a custom Depolorize method receives the Null and decides
 //     for itself. It can return a value or an error that matches ErrNullValue.
+//   - An interface is not a target, also not for a Null, because the wire does not tell which concrete
+//     type to decode. Use the concrete type, or decode into Any and decode the Any later. An interface
+//     with a Polorize method encodes the value that it holds, so a nil interface encodes as a Null.
 //
 // The typed methods of a Depolorizer follow the same rule. DepolorizeBytes, DepolorizeBigInt,
 // DepolorizeDocument, DepolorizeAny, DepolorizeRaw and DepolorizePacked return nil for a Null.
@@ -85,7 +88,8 @@
 // map as a pack or as a document, and bytes as a word or as a pack. Documents are the extensible format:
 // when a struct is decoded from a document (DocStructs), the decoder ignores unknown keys and leaves the
 // fields of absent keys at their zero values. Any and Raw
-// hold encoded data as is: the decoder only checks the tag of an Any, not its content. A Null decodes to
+// hold encoded data as is: the decoder only checks the tag of an Any, not its content, and the encoder
+// (PolorizeAny) applies the same checks, so it cannot write an Any that the decoder rejects. A Null decodes to
 // a nil Raw, and Polorize writes a nil Raw as a Null. Polorizer.PolorizeRaw writes a nil Raw as Raw{0}
 // (a WireRaw that holds a Null), which is a different wire.
 //

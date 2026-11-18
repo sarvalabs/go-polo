@@ -19,8 +19,8 @@ type readbuffer struct {
 // Returns a readbuffer and an error if one occurs.
 // Throws an error if the tag is malformed.
 //
-// newreadbuffer is used by the encoder (to embed Any and inner Polorizer wires) and does not require
-// a canonical tag. The decoder uses newcanonicalbuffer instead.
+// newreadbuffer is used by the encoder (to embed inner Polorizer wires) and does not require
+// a canonical tag. The decoder and PolorizeAny use newcanonicalbuffer instead.
 func newreadbuffer(b []byte) (readbuffer, error) {
 	// Create a reader from b
 	r := bytes.NewReader(b)
