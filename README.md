@@ -57,10 +57,11 @@ POLO's partially encoding and field order based indexing (and string based index
 ## Null Values
 Null means nil. The target type decides what a Null (`WireNull`) decodes to:
 
-- Pointers, slices (also `[]byte`), maps, interfaces, `Document`, `Any` and `Raw` can be nil. A Null decodes to nil, and `Depolorize` sets the target to nil.
+- Pointers, slices (also `[]byte`), maps, `Document`, `Any` and `Raw` can be nil. A Null decodes to nil, and `Depolorize` sets the target to nil.
 - For a pointer, go-polo consumes the Null and returns a nil pointer before it decodes the element type. A custom `Depolorize` method of the element type is not called.
 - Booleans, integers, floats, strings, arrays, structs and `big.Int` values cannot be nil. A Null is an error at every level (top level, struct field, slice, array or map element). The error matches `polo.ErrNullValue` with `errors.Is`.
 - A type that is not a pointer and has a custom `Depolorize` method receives the Null and decides for itself.
+- Interfaces are not supported as targets, also not for a Null: the wire does not tell which concrete type to decode. Use the concrete type, or decode into `Any` and decode the `Any` later. An interface with a `Polorize` method encodes the value that it holds, so a nil interface encodes as a Null, as a nil pointer does.
 
 The typed `Depolorizer` methods follow the same rule. `DepolorizeBytes`, `DepolorizeBigInt`, `DepolorizeDocument`, `DepolorizeAny`, `DepolorizeRaw` and `DepolorizePacked` return nil for a Null. A nil `*Depolorizer` has no elements. `DepolorizeBool`, `DepolorizeString`, the integer and float methods and `DepolorizeBytes32` return an error that matches `polo.ErrNullValue`.
 

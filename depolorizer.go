@@ -146,7 +146,7 @@ func (depolorizer *Depolorizer) peek() (WireType, bool) {
 // Returns an error if the object is not a pointer or if a decode error occurs.
 //
 // The decoded value overwrites the object. A WireNull sets an object that can be nil
-// (pointer, slice, map, interface) to nil, and is an error (ErrNullValue) for any other object.
+// (pointer, slice, map) to nil, and is an error (ErrNullValue) for any other object.
 // The only exception is an object with a custom Depolorize method, which decides for itself.
 func (depolorizer *Depolorizer) Depolorize(object any) error {
 	// Reflect the object value
@@ -939,8 +939,8 @@ func (depolorizer *Depolorizer) depolorizeDepolorizable(target reflect.Type) (re
 }
 
 // depolorizeValue accepts a reflect.Type and decodes a value from the Depolorizer into it.
-// The target type can be any type apart from channels and functions (and interfaces, which
-// can only be decoded from a WireNull). The returned value has exactly the target type.
+// The target type can be any type apart from channels, functions and interfaces.
+// The returned value has exactly the target type.
 func (depolorizer *Depolorizer) depolorizeValue(target reflect.Type) (reflect.Value, error) {
 	value, err := depolorizer.depolorizeKind(target)
 	if err != nil {
@@ -1053,17 +1053,7 @@ func (depolorizer *Depolorizer) depolorizeKind(target reflect.Type) (reflect.Val
 
 		return depolorizer.depolorizeStructValue(target)
 
-	// Interface Value: only a WireNull (nil) can be decoded into an interface
-	case reflect.Interface:
-		if wire, ok := depolorizer.peek(); ok && wire == WireNull {
-			_, err := depolorizer.read()
-
-			return reflect.Zero(target), err
-		}
-
-		return zeroVal, UnsupportedTypeError(target)
-
-	// Unsupported Type
+	// Unsupported Type (also interfaces: the wire does not tell which concrete type to decode)
 	default:
 		return zeroVal, UnsupportedTypeError(target)
 	}

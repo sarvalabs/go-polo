@@ -9,8 +9,12 @@ import (
 	"sort"
 )
 
-// float32Type is the reflect.Type of a float32
-var float32Type = reflect.TypeOf(float32(0))
+var (
+	// float32Type is the reflect.Type of a float32
+	float32Type = reflect.TypeOf(float32(0))
+	// polorizableType is the reflect.Type of the Polorizable interface
+	polorizableType = reflect.TypeOf((*Polorizable)(nil)).Elem()
+)
 
 // Polorizer is an encoding buffer that can sequentially polorize objects into it.
 // It can be collapsed into its bytes with Bytes() or Packed().
@@ -190,7 +194,11 @@ func (polorizer *Polorizer) PolorizeRaw(value Raw) {
 }
 
 // PolorizeAny encodes an Any into the Polorizer. Encodes the Any as its native type.
-// A nil Any is encodes as WireNull. Returns an error if the Any wire has an invalid wire tag.
+// A nil Any is encoded as WireNull.
+//
+// Returns an error if the Any is not an element that the decoder of an Any accepts: the tag must be
+// minimal with an offset of zero, and a WireNull, WireFalse or WireTrue must have no data.
+// The data of other wire types is not examined.
 // USE WITH CAUTION: Encoding unsupported wire formats, will lead to serialization failures
 func (polorizer *Polorizer) PolorizeAny(value Any) error {
 	// If raw value is nil, encode WireNull
@@ -200,10 +208,15 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 		return nil
 	}
 
-	// Convert the raw value into a readbuffer.
+	// Convert the raw value into a readbuffer with a canonical tag (C1, C2).
 	// This allows us to access the underlying wire type and data
-	rb, err := newreadbuffer(value)
+	rb, err := newcanonicalbuffer(value)
 	if err != nil {
+		return err
+	}
+
+	// Null, False and True carry no data (C4)
+	if err = rb.checkEmpty(); err != nil {
 		return err
 	}
 
@@ -496,7 +509,8 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 }
 
 // polorizeValue accepts a reflect.Value and encodes it into the Polorizer.
-// The underlying value can be any type apart from interfaces, channels and functions.
+// The underlying value can be any type apart from channels, functions and interfaces.
+// The only supported interfaces are those with a Polorize method: they encode the value that they hold.
 func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	// Untyped Nil
 	if value == zeroVal {
@@ -513,7 +527,19 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 	}
 
 	// Polorizable Type
-	if value.Type().Implements(reflect.TypeOf((*Polorizable)(nil)).Elem()) {
+	if value.Type().Implements(polorizableType) {
+		// An interface with a Polorize method encodes the value that it holds. Thus, it gives the
+		// same wire as a field of the concrete type: a nil interface and a nil pointer are a WireNull.
+		if value.Kind() == reflect.Interface {
+			if value.IsNil() {
+				polorizer.PolorizeNull()
+
+				return nil
+			}
+
+			return polorizer.polorizeValue(value.Elem())
+		}
+
 		return polorizer.polorizePolorizable(value)
 	}
 

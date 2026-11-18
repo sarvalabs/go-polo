@@ -17,6 +17,9 @@ v0.4.10 for every value it encodes, with the exceptions listed under "Behaviour 
 - go-pisa #130: a Null decodes to a nil pointer before a custom `Depolorize` method is called.
 - `IsNull` returns false when no elements are left, as documented (it used to report the last element of an atomic `Depolorizer`).
 - `Depolorizer.IsNull` returns false for the reserved wire types 8 to 12, as documented. It used to return true, so a custom `Depolorize` method that checks `IsNull` could accept a reserved wire type as a Null. `WireType.IsNull` does not change.
+- A nil interface whose type has a `Polorize` method, or a nil pointer in such an interface, encodes as a Null.
+  It used to panic. The wire is the same as for a field of the concrete type. Interfaces are still not a
+  target for the decoder.
 
 ### Added
 
@@ -24,6 +27,7 @@ v0.4.10 for every value it encodes, with the exceptions listed under "Behaviour 
 - `ErrInvalidUTF8`: matched by the error for a string that is not valid UTF-8.
 - `IncompatibleWireError` and `IncompatibleValueError` unwrap to these sentinels.
 - A nil `*Depolorizer` is safe to use: it has no elements.
+- `Document.Get` accepts `EncodingOptions`, like `Document.Set`. Give the options that `Set` used for the value.
 
 ### Behaviour changes for wires go-polo never produced
 
@@ -56,6 +60,11 @@ Null now decodes to nil for `Any` (it used to give `Any{0}`) and for `Raw`, `Dep
 - **A DocStructs field with a Null value** is an error unless the field can be nil. It used to be skipped.
 - **A map value from a document (DocStringMaps) that is Null** is kept as a nil entry. It used to be dropped.
 - **A float32 signaling NaN** keeps its bits on encode. It used to be written as a quiet NaN.
+- **An `Any` that the decoder rejects** is an error on encode: a tag that is not minimal, a tag with an offset,
+  or a Null, False or True with data. v0.4.10 rewrote the tag (`83 00 05` became `03 05`) and wrote `00 ff`,
+  which decoded as `00` without the `ff`. An `Any` from `DepolorizeAny` is always accepted.
+- **A value that `Document.Set` wrote with `PackedBytes`** needs the same option in `Document.Get`. `Get` used
+  to decode packed bytes without the option.
 - **A wire with more than 1,000 nesting levels** is an error with the default options (`ErrMaxDepthExceeded`).
   `DefaultMaxDepth` is now 1,000 (it was 10,000), because 10,000 levels overflow a 2 MiB thread stack in rs-polo
   and both libraries keep the same limit. Use `MaxDepth` to set another limit.

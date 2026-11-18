@@ -550,18 +550,131 @@ func TestN3_TypedMethods(t *testing.T) {
 	})
 
 	t.Run("interface", func(t *testing.T) {
-		// An interface can only be decoded from a WireNull
+		// An interface is not a target, also not for a WireNull: the encoder cannot write a nil any,
+		// so the decoder must not accept one (as in v0.4.9)
+		unsupported := "incompatible value error: unsupported type: interface {} [interface]"
+
 		var object any = 5
 
-		require.NoError(t, Depolorize(&object, []byte{0}))
-		require.Nil(t, object)
+		require.EqualError(t, Depolorize(&object, []byte{0}), unsupported)
+		require.EqualError(t, Depolorize(&object, []byte{3, 5}), unsupported)
+		require.Equal(t, 5, object)
 
-		err := Depolorize(&object, []byte{3, 5})
-		require.EqualError(t, err, "incompatible value error: unsupported type: interface {} [interface]")
+		var structure struct{ X any }
+
+		require.ErrorContains(t, Depolorize(&structure, hexWire(t, "0e1f00")), unsupported)
+
+		var list []any
+
+		require.EqualError(t, Depolorize(&list, hexWire(t, "0e1f00")), unsupported)
+		require.Nil(t, list)
+
+		_, err := Polorize(structure)
+		require.EqualError(t, err, unsupported)
 
 		_, err = (&Depolorizer{done: true}).depolorizeValue(reflect.TypeFor[any]())
-		require.EqualError(t, err, "incompatible value error: unsupported type: interface {} [interface]")
+		require.EqualError(t, err, unsupported)
 	})
+}
+
+// TestCanonical_AnyEncode checks that PolorizeAny rejects every Any that the decoder of an Any rejects,
+// and that every Any that it accepts decodes back into the same bytes
+func TestCanonical_AnyEncode(t *testing.T) {
+	rejected := []struct {
+		name  string
+		value Any
+		err   string
+	}{
+		{"C1: tag is not minimal", Any{0x83, 0x00, 0x05}, "malformed tag: varint is not minimally encoded"},
+		{"C2: tag has an offset", Any{0x13, 0x05}, "malformed tag: non-zero offset in top-level tag"},
+		{"C4: null has data", Any{0x00, 0xff}, "incompatible wire: unexpected data for wiretype 'null'"},
+		{"C4: false has data", Any{0x01, 0xff}, "incompatible wire: unexpected data for wiretype 'false'"},
+		{"C4: true has data", Any{0x02, 0xff}, "incompatible wire: unexpected data for wiretype 'true'"},
+		{"no tag", Any{}, "malformed tag: varint terminated prematurely"},
+	}
+
+	for _, test := range rejected {
+		t.Run(test.name, func(t *testing.T) {
+			// The decoder of an Any rejects the wire
+			var decoded Any
+
+			require.Error(t, Depolorize(&decoded, test.value))
+
+			// The encoder rejects the Any: with PolorizeAny, at the top level and as a struct field
+			require.EqualError(t, NewPolorizer().PolorizeAny(test.value), test.err)
+
+			_, err := Polorize(test.value)
+			require.EqualError(t, err, test.err)
+
+			_, err = Polorize(struct{ X Any }{test.value})
+			require.EqualError(t, err, test.err)
+		})
+	}
+
+	// Any{0} is accepted and gives the same wire as a nil Any, which decodes to nil (N1)
+	wire, err := Polorize(struct{ X Any }{Any{0}})
+	require.NoError(t, err)
+	requireRoundtrip(t, wire, struct{ X Any }{})
+
+	// The data of other wire types is not examined. A reserved wire type and WireLoad are accepted.
+	accepted := []string{"01", "02", "0305", "030005", "04", "0661", "08", "0f", "0e2f0313"}
+
+	for _, value := range accepted {
+		t.Run(value, func(t *testing.T) {
+			wire := hexWire(t, value)
+
+			requireRoundtrip(t, wire, Any(wire))
+			requireRoundtrip(t, packWire(func(p *Polorizer) {
+				require.NoError(t, p.PolorizeAny(wire))
+			}), struct{ X Any }{wire})
+		})
+	}
+}
+
+// TestPolorizableInterface checks that an interface with a Polorize method encodes the value that it holds,
+// with the same wire as a field of the concrete type. A nil interface used to panic. An interface is
+// not a target for the decoder, so the wire decodes only into the concrete type.
+func TestPolorizableInterface(t *testing.T) {
+	type Concrete struct{ X *customNullable }
+
+	type Interface struct{ X Polorizable }
+
+	tests := []struct {
+		name     string
+		value    Polorizable
+		concrete Concrete
+		wire     string
+	}{
+		{"nil", nil, Concrete{}, "0e1f00"},
+		{"nil pointer", (*customNullable)(nil), Concrete{}, "0e1f00"},
+		{"pointer", &customNullable{A: 7}, Concrete{&customNullable{A: 7}}, "0e1f0307"},
+		{"value", customNullable{A: 7}, Concrete{&customNullable{A: 7}}, "0e1f0307"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wire, err := Polorize(Interface{test.value})
+			require.NoError(t, err)
+			require.Equal(t, hexWire(t, test.wire), wire)
+
+			// The same wire as the concrete type, and it decodes into the concrete type
+			requireRoundtrip(t, wire, test.concrete)
+
+			// The decoder does not know which concrete type to create
+			var object Interface
+
+			require.ErrorContains(t, Depolorize(&object, wire), "unsupported type: polo.Polorizable [interface]")
+		})
+	}
+
+	// Lists of interfaces encode as lists of the concrete type
+	wire, err := Polorize([]Polorizable{nil, &customNullable{A: 3}})
+	require.NoError(t, err)
+	requireRoundtrip(t, wire, []*customNullable{nil, {A: 3}})
+
+	// Interfaces without a Polorize method are not supported
+	_, err = Polorize(struct{ X any }{&customNullable{A: 3}})
+	require.EqualError(t, err, "incompatible value error: unsupported type: interface {} [interface]")
 }
 
 // TestCanonical_Rejected checks every non-canonical wire that v0.4.10 accepted (and more)
