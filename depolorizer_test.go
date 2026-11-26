@@ -80,19 +80,19 @@ func TestNewDepolorizer(t *testing.T) {
 			"null wire",
 			[]byte{0},
 			"",
-			&Depolorizer{data: readbuffer{WireNull, []byte{}}, cfg: *defaultWireConfig()},
+			&Depolorizer{data: readbuffer{WireNull, []byte{}}},
 		},
 		{
 			"posint wire",
 			[]byte{3, 1, 44},
 			"",
-			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}, cfg: *defaultWireConfig()},
+			&Depolorizer{data: readbuffer{WirePosInt, []byte{1, 44}}},
 		},
 		{
 			"pack wire",
 			[]byte{14, 47, 3, 35, 1, 44, 250},
 			"",
-			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}, cfg: *defaultWireConfig()},
+			&Depolorizer{data: readbuffer{WirePack, []byte{47, 3, 35, 1, 44, 250}}},
 		},
 		{
 			"malformed wire",
@@ -604,12 +604,12 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 		depolorizer, err = depolorizer.DepolorizePacked()
 		require.Nil(t, err)
 
-		// The inner Depolorizer inherits the nesting limit and the nesting depth of
+		// The inner Depolorizer inherits the nesting depth of
 		// its parent, and it tracks the packs that are unpacked from it
 		inner, err := depolorizer.depolorizeInner()
 		assert.Nil(t, err)
 
-		expected := &Depolorizer{data: readbuffer{WireNull, []byte{}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		expected := &Depolorizer{data: readbuffer{WireNull, []byte{}}, depth: depolorizer.depth}
 		expected.track = &expected.open
 		assert.Equal(t, expected, inner)
 		assert.Same(t, &inner.open, inner.track)
@@ -617,7 +617,7 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 		inner, err = depolorizer.depolorizeInner()
 		assert.Nil(t, err)
 
-		expected = &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		expected = &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}, depth: depolorizer.depth}
 		expected.track = &expected.open
 		assert.Equal(t, expected, inner)
 

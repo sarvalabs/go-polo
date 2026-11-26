@@ -16,12 +16,11 @@ import (
 // Returns an error if the object is not a supported type, is a nil pointer
 // or if any of the element/field types cannot be serialized with Polorize()
 //
-// The options apply to the values of the Document. With DocStructs, a struct in a value is a document too,
-// and the bytes of the Document decode into the object with the same option. Without DocStructs, a struct
-// in a value is a pack. Then the bytes decode into a Document, and Get decodes each value.
-func PolorizeDocument(object any, options ...EncodingOptions) (Document, error) {
-	polorizer := NewPolorizer(options...)
-
+// Each value of the Document has the form of its own type. For example, a struct in a value is a document
+// only if its type is a DocumentStruct. For a DocumentStruct object, the bytes of the Document are the
+// same as Polorize(object) and decode into the object. For a struct object that is not a DocumentStruct,
+// the Document is a conversion: decode its bytes into a Document and use Get for each value.
+func PolorizeDocument(object any) (Document, error) {
 	value := reflect.ValueOf(object)
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
@@ -39,11 +38,11 @@ func PolorizeDocument(object any, options ...EncodingOptions) (Document, error) 
 			return nil, errors.New("could not encode into document: unsupported type: map type with non string key")
 		}
 
-		return polorizer.polorizeStrMapIntoDoc(value)
+		return strMapIntoDoc(value)
 
 	// Structs
 	case reflect.Struct:
-		return polorizer.polorizeStructIntoDoc(value)
+		return structIntoDoc(value)
 
 	default:
 		return nil, errors.New("could not encode into document: unsupported type")
@@ -86,9 +85,7 @@ func (doc Document) SetRaw(key string, val Raw) {
 // Get retrieves some object for some given key from a Document.
 // The data for the given key is decoded from its POLO form into the given object which must be a pointer.
 // Returns an error if there is no data for the key or if the data could not be decoded into the given object.
-// Accepts EncodingOptions to modify the decoding behaviour. Give the same options that Set used for the value:
-// the options are switches, so the decoder rejects a value that was encoded with other options.
-func (doc Document) Get(key string, object any, options ...EncodingOptions) error {
+func (doc Document) Get(key string, object any) error {
 	// Retrieve the data for the key and error if unavailable
 	var data []byte
 	if data = doc.GetRaw(key); data == nil {
@@ -96,7 +93,7 @@ func (doc Document) Get(key string, object any, options ...EncodingOptions) erro
 	}
 
 	// Depolorize the data into the given object and return any error
-	if err := Depolorize(object, data, options...); err != nil {
+	if err := Depolorize(object, data); err != nil {
 		return fmt.Errorf("document value could not be decoded for key '%v': %w", key, err)
 	}
 
@@ -106,9 +103,9 @@ func (doc Document) Get(key string, object any, options ...EncodingOptions) erro
 // Set inserts some object for some given key into a Document.
 // The given object is encoded into its POLO form and inserted, overwriting any existing data.
 // Returns an error if the given object cannot be serialized with Polorize().
-func (doc Document) Set(key string, object any, options ...EncodingOptions) error {
+func (doc Document) Set(key string, object any) error {
 	// Polorize the object into its wire form. Return any error that occurs
-	data, err := Polorize(object, options...)
+	data, err := Polorize(object)
 	if err != nil {
 		return fmt.Errorf("document value could not be encoded for key '%v': %w", key, err)
 	}

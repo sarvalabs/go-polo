@@ -3,7 +3,6 @@ package polo
 import (
 	"fmt"
 	"log"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -99,8 +98,14 @@ func Example_depolorizeDocumentToDocument() {
 	// map[Name:[6 111 114 97 110 103 101] alias:[14 63 6 150 1 116 97 110 103 101 114 105 110 101 109 97 110 100 97 114 105 110] cost:[3 1 44]]
 }
 
+// FruitDocument is a Fruit that is encoded as a document: it is a DocumentStruct
+type FruitDocument Fruit
+
+// PoloDocument marks FruitDocument as a DocumentStruct
+func (FruitDocument) PoloDocument() {}
+
 // Example_depolorizeDocumentToStruct is an example of using the Depolorize
-// function to decode a document encoded wire into a Fruit object
+// function to decode a document encoded wire into a FruitDocument object
 func Example_depolorizeDocumentToStruct() {
 	wire := []byte{
 		13, 175, 1, 6, 69, 182, 1, 133, 2, 230, 4, 165, 5, 78, 97, 109, 101, 6, 111, 114, 97,
@@ -108,10 +113,10 @@ func Example_depolorizeDocumentToStruct() {
 		105, 110, 101, 109, 97, 110, 100, 97, 114, 105, 110, 99, 111, 115, 116, 3, 1, 44,
 	}
 
-	// Create a new instance of Fruit
-	object := new(Fruit)
-	// Deserialize the document bytes into the Fruit object
-	if err := Depolorize(object, wire, DocStructs()); err != nil {
+	// Create a new instance of FruitDocument
+	object := new(FruitDocument)
+	// Deserialize the document bytes into the FruitDocument object
+	if err := Depolorize(object, wire); err != nil {
 		log.Fatalln(err)
 	}
 
@@ -242,41 +247,6 @@ func TestDocument_Get(t *testing.T) {
 	assert.EqualError(t, err, "document value could not be decoded for key 'bar': incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}") //nolint:lll
 }
 
-func TestDocument_GetOptions(t *testing.T) {
-	// Get decodes with the options that Set used for the value
-	type Pair struct {
-		A uint64
-		B string
-	}
-
-	type Bytes struct{ B []byte }
-
-	tests := []struct {
-		name   string
-		option EncodingOptions
-		value  any
-		target any
-	}{
-		{"DocStructs", DocStructs(), Pair{A: 1, B: "x"}, new(Pair)},
-		{"PackedBytes", PackedBytes(), Bytes{B: []byte{1, 2}}, new(Bytes)},
-		{"DocStringMaps", DocStringMaps(), map[string]uint64{"a": 1}, new(map[string]uint64)},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			doc := make(Document)
-			require.NoError(t, doc.Set("k", test.value, test.option))
-
-			// Without the option, the decoder rejects the wire (an agreement needs the option)
-			require.Error(t, doc.Get("k", test.target))
-
-			// With the option, Get decodes the value
-			require.NoError(t, doc.Get("k", test.target, test.option))
-			require.Equal(t, test.value, reflect.ValueOf(test.target).Elem().Interface())
-		})
-	}
-}
-
 //nolint:lll
 func TestPolorizeDocument(t *testing.T) {
 	type ObjectA struct {
@@ -388,58 +358,52 @@ func TestPolorizeDocument(t *testing.T) {
 	}
 }
 
+// docObjectA and docObjectB are DocumentStructs for the encode tests
+type docObjectA struct {
+	A string
+	B uint64
+}
+
+func (docObjectA) PoloDocument() {}
+
+type docObjectB struct {
+	A chan int
+	B string
+}
+
+func (docObjectB) PoloDocument() {}
+
 //nolint:lll
 func TestDocument_Encode(t *testing.T) {
-	type ObjectA struct {
-		A string
-		B uint64
-	}
-
-	type ObjectB struct {
-		A chan int
-		B string
-	}
-
 	tests := []struct {
-		name    string
-		object  any
-		options []EncodingOptions
-		wire    []byte
-		err     string
+		name   string
+		object any
+		wire   []byte
+		err    string
 	}{
 		{
-			"valid struct & DocStructs enabled",
-			ObjectA{A: "foo", B: 300},
-			[]EncodingOptions{DocStructs()},
+			"valid document struct",
+			docObjectA{A: "foo", B: 300},
 			[]byte{13, 79, 6, 21, 86, 101, 65, 6, 102, 111, 111, 66, 3, 1, 44},
 			"",
 		},
 		{
-			"valid string map & DocStringMaps enabled",
+			"string map is a pack",
 			map[string]string{"foo": "bar", "boo": "far"},
-			[]EncodingOptions{DocStringMaps()},
-			[]byte{13, 95, 6, 53, 118, 165, 1, 98, 111, 111, 6, 102, 97, 114, 102, 111, 111, 6, 98, 97, 114},
+			[]byte{14, 95, 6, 54, 102, 150, 1, 98, 111, 111, 102, 97, 114, 102, 111, 111, 98, 97, 114},
 			"",
 		},
 		{
-			"invalid struct & DocStructs enabled",
-			ObjectB{make(chan int), "foo"},
-			[]EncodingOptions{DocStructs()},
+			"invalid document struct",
+			docObjectB{make(chan int), "foo"},
 			nil,
 			"could not encode into document: document value could not be encoded for key 'A': incompatible value error: unsupported type: chan int [chan]",
-		},
-		{
-			"invalid string map & DocStringMaps enabled",
-			map[string]chan int{"foo": make(chan int)},
-			[]EncodingOptions{DocStringMaps()},
-			nil,
-			"could not encode into document: document value could not be encoded for key 'foo': incompatible value error: unsupported type: chan int [chan]",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			encoded, err := Polorize(test.object, test.options...)
+			encoded, err := Polorize(test.object)
 			if test.err == "" {
 				assert.Nil(t, err)
 				assert.Equal(t, test.wire, encoded)
@@ -515,162 +479,131 @@ func TestDocument_DecodeToDocument(t *testing.T) {
 	}
 }
 
+// docObject is a DocumentStruct with custom keys and a skipped field
+type docObject struct {
+	A int `polo:"boo"`
+	B int `polo:"foo"`
+	C int `polo:"-"`
+}
+
+func (docObject) PoloDocument() {}
+
 func TestDocument_DecodeToStruct(t *testing.T) {
 	type Object struct {
 		A int `polo:"boo"`
 		B int `polo:"foo"`
-		C int `polo:"-"`
 	}
 
 	tests := []struct {
-		name    string
-		bytes   []byte
-		target  any
-		object  any
-		options []EncodingOptions
-		err     string
+		name   string
+		bytes  []byte
+		target any
+		object any
+		err    string
 	}{
 		{
-			"decode to struct with DocStructs enabled & absent field",
+			"absent key gives the zero value",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: struct field [polo.Object.B <int>]: incompatible wire: no document key 'foo'",
-		},
-		{
-			"decode to struct with ExtensibleDocStructs enabled & absent field",
-			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
-			new(Object),
-			&Object{A: 300},
-			[]EncodingOptions{ExtensibleDocStructs()},
+			new(docObject),
+			&docObject{A: 300},
 			"",
 		},
 		{
-			"decode to struct with DocStructs enabled & null field",
+			"empty document",
+			[]byte{13, 15},
+			new(docObject),
+			new(docObject),
+			"",
+		},
+		{
+			"null field",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: struct field [polo.Object.B <int>]: incompatible wire: nil value",
+			new(docObject),
+			new(docObject),
+			"incompatible wire: struct field [polo.docObject.B <int>]: incompatible wire: nil value",
 		},
 		{
-			"decode to struct with DocStructs enabled & absent and unknown fields",
+			"absent and unknown keys",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 122, 122, 122, 0},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: struct field [polo.Object.B <int>]: incompatible wire: no document key 'foo'",
+			new(docObject),
+			new(docObject),
+			"incompatible wire: unknown document key 'zzz' for struct polo.docObject",
 		},
 		{
-			"decode to struct with ExtensibleDocStructs enabled & absent and unknown fields",
-			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 122, 122, 122, 0},
-			new(Object),
-			&Object{A: 54},
-			[]EncodingOptions{ExtensibleDocStructs()},
-			"",
-		},
-		{
-			"decode to struct with DocStructs enabled & unknown field",
+			"unknown key",
 			Document{"boo": Raw{3, 54}, "foo": Raw{3, 89}, "zzz": Raw{0}}.Bytes(),
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: unknown document key 'zzz' for struct polo.Object",
+			new(docObject),
+			new(docObject),
+			"incompatible wire: unknown document key 'zzz' for struct polo.docObject",
 		},
 		{
-			"decode to struct with DocStructs enabled & key of a skipped field",
+			"key of a skipped field",
 			Document{"C": Raw{3, 1}, "boo": Raw{3, 54}, "foo": Raw{3, 89}}.Bytes(),
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: unknown document key 'C' for struct polo.Object",
+			new(docObject),
+			new(docObject),
+			"incompatible wire: unknown document key 'C' for struct polo.docObject",
 		},
 		{
-			"decode to struct with ExtensibleDocStructs enabled & unknown field",
-			Document{"boo": Raw{3, 54}, "foo": Raw{3, 89}, "zzz": Raw{0}}.Bytes(),
-			new(Object),
-			&Object{A: 54, B: 89},
-			[]EncodingOptions{ExtensibleDocStructs()},
-			"",
-		},
-		{
-			"decode to struct from a pack with DocStructs enabled",
+			"pack for a document struct",
 			[]byte{14, 47, 3, 19, 54, 89},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
+			new(docObject),
+			new(docObject),
 			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}",
 		},
 		{
-			"decode to map[string]int with DocStringMaps enabled",
-			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
-			new(map[string]int),
-			&map[string]int{"boo": 300},
-			[]EncodingOptions{DocStringMaps()},
-			"",
-		},
-		{
-			"decode to map[string]int with DocStringMaps enabled & null value",
-			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 0},
-			new(map[string]int),
-			new(map[string]int),
-			[]EncodingOptions{DocStringMaps()},
-			"incompatible wire: nil value",
-		},
-		{
-			"decode to map[string][]string with DocStringMaps enabled",
-			[]byte{13, 79, 6, 53, 70, 117, 98, 97, 114, 0, 102, 111, 111, 14, 47, 6, 54, 98, 111, 111, 119, 111, 111},
-			new(map[string][]string),
-			&map[string][]string{"foo": {"boo", "woo"}, "bar": nil},
-			[]EncodingOptions{DocStringMaps()},
-			"",
-		},
-		{
-			"decode to struct with DocStructs enabled",
+			"document for a struct that is not a document struct",
 			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
 			new(Object),
-			&Object{A: 54, B: 89},
-			[]EncodingOptions{DocStructs()},
+			new(Object),
+			"incompatible wire: unexpected wiretype 'document'. expected one of: {null, pack}",
+		},
+		{
+			"document for a string map",
+			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
+			new(map[string]int),
+			new(map[string]int),
+			"incompatible wire: unexpected wiretype 'document'. expected one of: {null, pack}",
+		},
+		{
+			"all keys",
+			[]byte{13, 95, 6, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
+			new(docObject),
+			&docObject{A: 54, B: 89},
 			"",
 		},
 		{
-			"decode to struct with DocStructs enabled & extra incompatible fields",
+			"extra incompatible fields",
 			[]byte{13, 95, 7, 53, 86, 133, 1, 98, 111, 111, 3, 54, 102, 111, 111, 3, 89},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
+			new(docObject),
+			new(docObject),
 			"incompatible wire: unexpected wiretype 'float'. expected one of: {null, word}",
 		},
 		{
-			"decode to struct with DocStructs enabled & malformed fields",
+			"malformed fields",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 142},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
+			new(docObject),
+			new(docObject),
 			"malformed tag: varint terminated prematurely",
 		},
 		{
-			"decode to struct with DocStructs enabled & non raw value",
+			"non raw value",
 			[]byte{13, 47, 6, 54, 98, 111, 111, 3, 1, 44},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
+			new(docObject),
+			new(docObject),
 			"incompatible wire: unexpected wiretype 'word'. expected one of: {raw}",
 		},
 		{
-			"decode to struct with DocStructs enabled & incompatible field",
+			"incompatible field",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 1, 44},
-			new(Object),
-			new(Object),
-			[]EncodingOptions{DocStructs()},
-			"incompatible wire: struct field [polo.Object.A <int>]: incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}", //nolint:lll
+			new(docObject),
+			new(docObject),
+			"incompatible wire: struct field [polo.docObject.A <int>]: incompatible wire: unexpected wiretype 'word'. expected one of: {null, posint, negint}", //nolint:lll
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Depolorize(test.target, test.bytes, test.options...)
+			err := Depolorize(test.target, test.bytes)
 			assert.Equal(t, test.object, test.target)
 
 			if test.err == "" {
@@ -681,6 +614,28 @@ func TestDocument_DecodeToStruct(t *testing.T) {
 		})
 	}
 }
+
+// docObject1, docObject2 and docObject3 are DocumentStructs that are nested in each other
+type docObject1 struct {
+	A string
+	B uint64
+}
+
+func (docObject1) PoloDocument() {}
+
+type docObject2 struct {
+	A uint32
+	B docObject1
+}
+
+func (docObject2) PoloDocument() {}
+
+type docObject3 struct {
+	A []string
+	B docObject2
+}
+
+func (docObject3) PoloDocument() {}
 
 //nolint:lll
 func TestDocument_DeepStructs(t *testing.T) {
@@ -710,23 +665,39 @@ func TestDocument_DeepStructs(t *testing.T) {
 		},
 	}
 
+	docObject := docObject3{
+		A: []string{"foo", "boo"},
+		B: docObject2{
+			A: 500,
+			B: docObject1{
+				A: "foo",
+				B: 300,
+			},
+		},
+	}
+
 	// Simple Encoding - Just serialize the object with regular POLO encoding
 	// It will result in a pack-encoded wire
 	simpleEncoded, err := Polorize(object)
 	require.NoError(t, err)
 
-	// Shallow Document Encoding - Serialize the object with shallow document encoding.
+	// Shallow Document Encoding - Convert the object into a Document.
 	// It will result in a doc-encoded wire with only Object3 fields being doc-encoded.
-	// Any deeper structs will be regularly pack-encoded
+	// The structs in the fields are not DocumentStructs, so they are pack-encoded
 	shallow, err := PolorizeDocument(object)
 	require.NoError(t, err)
 
 	shallowEncoded := shallow.Bytes()
 
-	// Deep Document Encoding - Serialize the object with deep document encoding.
+	// Deep Document Encoding - Serialize the DocumentStruct object.
 	// It will result in a doc-encoded wire with all structs at all depths being doc-encoded.
-	deepEncoded, err := Polorize(object, DocStructs())
+	deepEncoded, err := Polorize(docObject)
 	require.NoError(t, err)
+
+	// PolorizeDocument of a DocumentStruct gives the same wire as Polorize
+	deep, err := PolorizeDocument(docObject)
+	require.NoError(t, err)
+	require.Equal(t, deepEncoded, deep.Bytes())
 
 	// None of the 3 generated wires must be the same.
 	require.NotEqual(t, simpleEncoded, deepEncoded)
@@ -742,13 +713,13 @@ func TestDocument_DeepStructs(t *testing.T) {
 	err = Depolorize(simpleDecoded, simpleEncoded)
 	require.NoError(t, err)
 
-	// The shallow doc-encoded wire does not decode into the struct. Without the DocStructs option,
-	// the decoder rejects the document of Object3. With it, the decoder rejects the pack of Object2.
+	// The shallow doc-encoded wire does not decode into a struct. Object3 rejects the document,
+	// and docObject3 rejects the pack of Object2 in its field B (docObject2 is a document).
 	shallowDecoded := new(Object3)
 	require.EqualError(t, Depolorize(shallowDecoded, shallowEncoded),
 		"incompatible wire: unexpected wiretype 'document'. expected one of: {null, pack}")
-	require.EqualError(t, Depolorize(shallowDecoded, shallowEncoded, DocStructs()),
-		"incompatible wire: struct field [polo.Object3.B <polo.Object2>]: incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}")
+	require.EqualError(t, Depolorize(new(docObject3), shallowEncoded),
+		"incompatible wire: struct field [polo.docObject3.B <polo.docObject2>]: incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}")
 
 	// Decode the object from the shallow doc-encoded wire.
 	// Decode the wire into a Document, and decode each field from the Document
@@ -759,12 +730,12 @@ func TestDocument_DeepStructs(t *testing.T) {
 	require.NoError(t, shallowDocument.Get("B", &shallowDecoded.B))
 
 	// Decode the object from the deep doc-encoded wire
-	deepDecoded := new(Object3)
-	err = Depolorize(deepDecoded, deepEncoded, DocStructs())
+	deepDecoded := new(docObject3)
+	err = Depolorize(deepDecoded, deepEncoded)
 	require.NoError(t, err)
 
-	// All 3 decoded objects must be equal
+	// All decoded objects must be equal
 	require.Equal(t, simpleDecoded, shallowDecoded)
-	require.Equal(t, simpleDecoded, deepDecoded)
-	require.Equal(t, shallowDecoded, deepDecoded)
+	require.Equal(t, &object, simpleDecoded)
+	require.Equal(t, &docObject, deepDecoded)
 }

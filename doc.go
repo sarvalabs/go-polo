@@ -64,8 +64,8 @@
 // # Canonical decoding
 //
 // Every value has exactly one encoding. Up to the nesting limit (see MaxDepth), the decoder accepts exactly
-// the bytes that the encoder produces, so Polorize(Depolorize(wire)) == wire for every wire that decodes
-// with the default options. Other wires are errors:
+// the bytes that the encoder produces, so Polorize(Depolorize(wire)) == wire for every wire that decodes.
+// Other wires are errors:
 //
 //   - Varints in tags (the top-level tag, load tags and head tags) are minimally encoded.
 //   - The offset in a top-level tag is zero.
@@ -85,34 +85,39 @@
 //     same key of a Go map. The encoder writes that key as positive zero, also in an array key, and
 //     the decoder rejects a negative zero key. A negative zero that is not a map key keeps its bits.
 //   - Document keys are in strictly ascending order and every Document value is a WireRaw.
-//   - Bytes in a pack (the PackedBytes option) are WirePosInt elements with exactly one byte each,
-//     zero included, because that is how the encoder writes them.
 //
-// The options PackedBytes, DocStructs and DocStringMaps are switches. With an option, the encoder writes
-// only the other form of a type (bytes as a pack, a struct or a string map as a document), and the decoder
-// accepts only that form. Thus, the rule above is true for each set of options, and the decoder must have
-// the options of the encoder. A struct that is decoded from a document (DocStructs) must have exactly one
-// key for each encoded field: an absent key and an unknown key are errors.
+// # Wire forms
+//
+// Each type has one form, and there are no options that change it. The decoder accepts only that form:
+//
+//   - Bytes ([]byte, [N]byte and named byte types) are a WireWord. A pack of bytes is an error.
+//   - A struct is a WirePack, and a DocumentStruct is a WireDoc (see DocumentStruct). The form is a
+//     property of the type, so it is the same at all levels: in a field, in a map value or in a slice.
+//   - A map is a WirePack, also with string keys. A Document is a WireDoc.
+//
+// PolorizeDocument converts a struct or a map with string keys into a Document. For a struct that is not
+// a DocumentStruct, the bytes of that Document do not decode into the struct: decode them into a Document
+// and use Document.Get for each value.
 //
 // The canonical rule stops in these cases:
 //
 //   - Any and Raw hold encoded data as is. The decoder checks only the tag of an Any: the tag is canonical,
 //     the wire type is not reserved and not WireLoad, and a WireNull, WireFalse or WireTrue has no data.
 //     The encoder (PolorizeAny) applies the same checks, so it cannot write an Any that the decoder rejects.
-//     The data after the tag is not examined, because its rules depend on the target type: 03 00 is a byte
-//     in a pack (PackedBytes) but not an integer, and 06 ff is bytes but not a string. Thus, an Any accepts
-//     03 05 and 03 00 05. The content of a Raw is not examined at all. The canonical rules apply when the
-//     data is decoded into a typed target. A Null decodes to a nil Raw, and Polorize writes a nil Raw as
-//     a Null. Polorizer.PolorizeRaw writes a nil Raw as Raw{0} (a WireRaw that holds a Null), which is
-//     a different wire.
-//   - ExtensibleDocStructs. With this option, the decoder ignores unknown keys in the document of a struct
-//     and leaves the fields of absent keys at their zero values. Use it only for data that must be
-//     extensible, and not for a wire that is hashed or signed.
+//     The data after the tag is not examined, because its rules depend on the target type: for example,
+//     06 ff is valid bytes but not a valid string. Thus, an Any accepts 03 05 and 03 00 05. The content of
+//     a Raw is not examined at all. The canonical rules apply when the data is decoded into a typed target.
+//     A Null decodes to a nil Raw, and Polorize writes a nil Raw as a Null. Polorizer.PolorizeRaw writes
+//     a nil Raw as Raw{0} (a WireRaw that holds a Null), which is a different wire.
+//   - Absent keys of a DocumentStruct. The decoder gives the zero value to the field of an absent key,
+//     because another encoder (for example, the PISA runtime) leaves out the key of a field that has no
+//     value. The encoder writes all the keys. Thus, a document without a key and the document with the
+//     zero value for that key decode into the same struct. An unknown key is always an error, so a wire
+//     cannot hold data that the struct does not read.
 //   - Custom codecs. The author of a Polorize and Depolorize method must make sure that the type has one
 //     wire. The decoder checks one part of this: it returns an error if a custom Depolorize method does not
-//     read all the data of its element (see Depolorizable). The options that select a wire form do not
-//     reach a custom codec: its Polorizer and its Depolorizer have the default forms.
+//     read all the data of its element (see Depolorizable).
 //
 // The encoder has no nesting limit. It can write a wire with more levels than the decoder accepts
-// (DefaultMaxDepth, or the value of MaxDepth), and the decoder rejects that wire with ErrMaxDepthExceeded.
+// (MaxDepth), and the decoder rejects that wire with ErrMaxDepthExceeded.
 package polo

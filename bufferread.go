@@ -154,74 +154,29 @@ func (rb readbuffer) decodeBool() (bool, error) {
 	}
 }
 
-// decodeBytes decodes a byte slice from the form that the encoder writes: a WireWord (any data is
-// accepted) or, if packed is set (PackedBytes option), a WirePack of 8-bit integers. The other form
-// is an error, so that bytes have one wire for each configuration. A WireNull is a nil slice.
-func (rb readbuffer) decodeBytes(packed bool) ([]byte, error) {
-	switch {
+// decodeBytes decodes a byte slice from a WireWord. Any data is accepted. A WireNull is a nil slice.
+func (rb readbuffer) decodeBytes() ([]byte, error) {
+	switch rb.wire {
 	// Nil Byte Slice
-	case rb.wire == WireNull:
+	case WireNull:
 		return nil, nil
 
-	case rb.wire == WireWord && !packed:
+	case WireWord:
 		return rb.data, nil
-
-	// Packed Bytes Value ([]uint8)
-	case rb.wire == WirePack && packed:
-		return rb.decodePackedBytes()
-
-	case packed:
-		return nil, IncompatibleWireType(rb.wire, WireNull, WirePack)
 
 	default:
 		return nil, IncompatibleWireType(rb.wire, WireNull, WireWord)
 	}
 }
 
-// decodePackedBytes decodes a byte slice from a WirePack of 8-bit integers. The encoder writes every byte
-// as a WirePosInt with exactly one byte of data (zero included), so that is the only accepted element.
-func (rb readbuffer) decodePackedBytes() ([]byte, error) {
-	// Unpack the pack encoded data
-	pack, err := rb.unpack()
-	if err != nil {
-		return nil, err
-	}
-
-	packed := make([]byte, 0)
-
-	// Iterate on the pack items
-	for !pack.done() {
-		// Obtain the pack item
-		item, err := pack.next()
-		if err != nil {
-			return nil, err
-		}
-
-		// Every item must be a WirePosInt with exactly one byte
-		if item.wire != WirePosInt || len(item.data) != 1 {
-			// Report the error for an item that is not an 8-bit unsigned integer
-			if _, err = item.decodeUint(1); err != nil {
-				return nil, err
-			}
-
-			// A WirePosInt without data (a zero byte is written as one byte in packed bytes)
-			return nil, IncompatibleWireError{msg: "missing data for packed byte"}
-		}
-
-		packed = append(packed, item.data[0])
-	}
-
-	return packed, nil
-}
-
 // decodeByteArray decodes the bytes for a byte array of the given length. An array
 // cannot be nil, so a WireNull is an error, and the data must have exactly the length (C5).
-func (rb readbuffer) decodeByteArray(length int, packed bool) ([]byte, error) {
+func (rb readbuffer) decodeByteArray(length int) ([]byte, error) {
 	if rb.wire == WireNull {
 		return nil, nullValueError()
 	}
 
-	data, err := rb.decodeBytes(packed)
+	data, err := rb.decodeBytes()
 	if err != nil {
 		return nil, err
 	}
@@ -234,12 +189,12 @@ func (rb readbuffer) decodeByteArray(length int, packed bool) ([]byte, error) {
 }
 
 // decodeBytes32 decodes a 32-byte array. A WireNull is an error and the data must have exactly 32 bytes.
-func (rb readbuffer) decodeBytes32(packed bool) ([32]byte, error) {
+func (rb readbuffer) decodeBytes32() ([32]byte, error) {
 	if rb.wire == WireNull {
 		return [32]byte{}, nullValueError()
 	}
 
-	value, err := rb.decodeBytes(packed)
+	value, err := rb.decodeBytes()
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -424,11 +379,11 @@ func (rb readbuffer) decodeBigInt() (*big.Int, error) {
 // decodeDocument decodes a Document from a WireDoc. A WireNull is a nil Document.
 // The keys must be valid UTF-8 strings in strictly ascending order (sorted, no duplicates), as the
 // encoder writes them (C7), and every value must be a WireRaw. The values themselves are not decoded.
-func (rb readbuffer) decodeDocument(cfg wireConfig, depth int) (Document, error) {
+func (rb readbuffer) decodeDocument(depth int) (Document, error) {
 	switch rb.wire {
 	case WireDoc:
 		// Get the next element as a pack depolorizer with the document elements
-		pack, err := newLoadDepolorizer(rb, cfg, depth)
+		pack, err := newLoadDepolorizer(rb, depth)
 		if err != nil {
 			return nil, err
 		}

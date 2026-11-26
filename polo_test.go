@@ -213,26 +213,26 @@ func Example_wireDecoding() {
 }
 
 // testSerialization is a generic function that tests the serialization consistency for a given object.
-// It is to be used on fuzzed values and accepts some encoding options that are applied at every encode/decode step.
+// It is to be used on fuzzed values.
 // The steps performed in this function are as follows
-//  1. Encode the given object (options applied)
-//  2. Decode the wire output of step 1 (options applied)
+//  1. Encode the given object
+//  2. Decode the wire output of step 1
 //  3. Verify object equality (given object == decoded object)
-//  4. Encode the decoded object (options applied)
+//  4. Encode the decoded object
 //  5. Verify wire equality (step 1 wire == step 4 wire)
-func testSerialization[T any](t *testing.T, x T, options ...EncodingOptions) {
+func testSerialization[T any](t *testing.T, x T) {
 	t.Helper()
 
-	wire, err := Polorize(x, options...)
+	wire, err := Polorize(x)
 	require.Nil(t, err)
 
 	y := new(T)
-	err = Depolorize(y, wire, options...)
+	err = Depolorize(y, wire)
 
 	require.Nil(t, err, "Unexpected Error. Input: %v", x)
 	require.Equal(t, x, *y, "Object Mismatch. Input: %v", x)
 
-	rewire, err := Polorize(*y, options...)
+	rewire, err := Polorize(*y)
 	require.Nil(t, err)
 	require.Equal(t, wire, rewire, "Wire Mismatch. Input: %v", x)
 }
@@ -459,15 +459,6 @@ func TestWord(t *testing.T) {
 		}
 	})
 
-	t.Run("Bytes-Packed", func(t *testing.T) {
-		var x []byte
-
-		for i := 0; i < 1000; i++ {
-			f.Fuzz(&x)
-			testSerialization(t, x, PackedBytes())
-		}
-	})
-
 	t.Run("WordObject", func(t *testing.T) {
 		var x WordObject
 
@@ -630,15 +621,6 @@ func TestSequence(t *testing.T) {
 		for i := 0; i < 1000; i++ {
 			f.Fuzz(&x)
 			testSerialization(t, x)
-		}
-	})
-
-	t.Run("Byte Array Packed", func(t *testing.T) {
-		var x [32]byte
-
-		for i := 0; i < 1000; i++ {
-			f.Fuzz(&x)
-			testSerialization(t, x, PackedBytes())
 		}
 	})
 
@@ -1241,157 +1223,124 @@ func TestMalformedFloatData(t *testing.T) {
 //nolint:lll
 func TestIncompatibleWireType(t *testing.T) {
 	tests := []struct {
-		name    string
-		wire    []byte
-		object  any
-		options []EncodingOptions
-		err     error
+		name   string
+		wire   []byte
+		object any
+		err    error
 	}{
 		{
 			"WireTrue -> float32",
 			[]byte{2},
 			new(float32),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'true'. expected one of: {null, float}"},
 		},
 		{
 			"WireNegInt -> float64",
 			[]byte{4, 1},
 			new(float64),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'negint'. expected one of: {null, float}"},
 		},
 		{
 			"WireFloat -> string",
 			[]byte{7, 111, 114, 97, 110, 103, 101},
 			new(string),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
 			"WirePosInt -> bool",
 			[]byte{3, 44},
 			new(bool),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, true, false}"},
 		},
 		{
 			"WireTrue -> uint64",
 			[]byte{2},
 			new(uint64),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'true'. expected one of: {null, posint}"},
 		},
 		{
 			"WireNegInt -> []string",
 			[]byte{4, 45, 22},
 			new([]string),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'negint'. expected one of: {null, pack}"},
 		},
 		{
 			"WireNegInt -> []byte",
 			[]byte{4, 45, 22},
 			new([]byte),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'negint'. expected one of: {null, word}"},
 		},
 		{
 			"WirePosInt -> [4]string",
 			[]byte{3, 45, 22},
 			new([4]string),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			"WireRaw -> map[string]string",
 			[]byte{5, 45, 22},
 			new(map[string]string),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'raw'. expected one of: {null, pack}"},
 		},
 		{
 			"WireFloat -> big.Int",
 			[]byte{7, 45, 22, 56, 34},
 			new(big.Int),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'float'. expected one of: {null, posint, negint}"},
 		},
 		{
 			"WirePosInt -> struct",
 			[]byte{3, 45, 22},
 			new(*IntegerObject),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			"struct field: WirePosInt -> string",
 			[]byte{14, 95, 3, 3, 3, 3, 3},
 			&WordObject{},
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "struct field [polo.WordObject.A <string>]: incompatible wire: unexpected wiretype 'posint'. expected one of: {null, word}"},
 		},
 		{
 			"struct field: WireFalse -> int",
 			[]byte{14, 95, 1, 0, 0, 0, 0},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "struct field [polo.IntegerObject.A <int>]: incompatible wire: unexpected wiretype 'false'. expected one of: {null, posint, negint}"},
 		},
 		{
 			"struct from document with DocStruct disabled",
 			[]byte{13, 47, 6, 21, 65, 1},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'document'. expected one of: {null, pack}"},
 		},
 		{
 			"document field: WireFloat -> string",
 			[]byte{13, 95, 7, 53, 86, 133, 1, 102, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'float'. expected one of: {null, word}"},
 		},
 		{
 			"WireNegInt -> []uint64",
 			[]byte{14, 31, 4, 132},
 			new([]uint64),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'negint'. expected one of: {null, posint}"},
 		},
 		{
 			"WireWord -> []byte",
 			[]byte{3, 76},
 			new([]byte),
-			[]EncodingOptions{PackedBytes()},
-			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, pack}"},
+			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, word}"},
 		},
 		{
-			"string map from document with DocStringMaps disabled",
+			"string map from document",
 			[]byte{13, 47, 6, 53, 98, 111, 111, 3, 1, 44},
 			new(map[string]int),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "unexpected wiretype 'document'. expected one of: {null, pack}"},
-		},
-		{
-			"string map from document with DocStringMaps enabled",
-			[]byte{13, 47, 5, 53, 98, 111, 111, 3, 1, 44},
-			new(map[string]int),
-			[]EncodingOptions{DocStringMaps()},
-			IncompatibleWireError{msg: "unexpected wiretype 'raw'. expected one of: {null, word}"},
-		},
-		{
-			"string map from document with DocStringMaps enabled",
-			[]byte{13, 47, 6, 53, 98, 111, 111, 6, 145, 12},
-			new(map[string]int),
-			[]EncodingOptions{DocStringMaps()},
-			IncompatibleWireError{msg: "unexpected wiretype 'word'. expected one of: {null, posint, negint}"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Depolorize(test.object, test.wire, test.options...)
+			err := Depolorize(test.object, test.wire)
 			assert.EqualError(t, err, test.err.Error())
 		})
 	}
@@ -1399,206 +1348,160 @@ func TestIncompatibleWireType(t *testing.T) {
 
 func TestMalformed(t *testing.T) {
 	tests := []struct {
-		name    string
-		wire    []byte
-		object  any
-		options []EncodingOptions
-		err     error
+		name   string
+		wire   []byte
+		object any
+		err    error
 	}{
 		{
 			"non-pointer target",
 			[]byte{14, 78, 3, 3, 3, 3},
 			IntegerObject{},
-			[]EncodingOptions{},
 			ErrObjectNotPtr,
 		},
 		{
 			"signed integer overflow",
 			[]byte{3, 255, 255, 255, 255, 255, 255, 255, 255},
 			new(int64),
-			[]EncodingOptions{},
 			IncompatibleValueError{msg: "overflow for signed integer"},
 		},
 		{
 			"excess 8-bit data",
-			[]byte{14, 47, 3, 19, 102, 45, 67},
-			new([]byte),
-			[]EncodingOptions{PackedBytes()},
+			[]byte{3, 102, 45},
+			new(uint8),
 			IncompatibleValueError{msg: "excess data for 8-bit integer"},
 		},
 		{
 			"varint overflow",
 			[]byte{255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 93, 3, 3, 3, 3, 3},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			MalformedTagError{errVarintOverflow.Error()},
 		},
 		{
 			"varint premature termination",
 			[]byte{14, 47, 6, 134},
 			new([][2]byte),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"mismatched data length for byte array",
 			[]byte{6, 255, 255, 255},
 			new([2]byte),
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: "mismatched data length for byte array"},
 		},
 		{
 			"missing load tag for pack wire",
 			[]byte{14, 78, 3, 3, 3, 3},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			errors.New("load convert fail: missing load tag"),
 		},
 		{
 			"malformed load tag for pack wire",
 			[]byte{14, 255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 3, 3, 3, 3, 3},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint overflows 64-bit integer"),
 		},
 		{
 			"insufficient data for struct decode",
 			[]byte{14, 79, 3, 3, 3, 3},
 			&IntegerObject{},
-			[]EncodingOptions{},
 			IncompatibleWireError{msg: fmt.Sprintf("struct field [polo.IntegerObject.E <int64>]: %v", ErrInsufficientWire)},
 		},
 		{
 			"malformed varint when decoding document",
 			[]byte{13, 175},
 			new(Document),
-			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding slice",
 			[]byte{14, 175},
 			new([]string),
-			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding array",
 			[]byte{14, 175},
 			new([2]float32),
-			[]EncodingOptions{},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"malformed varint when decoding mapping",
 			[]byte{14, 175},
 			new(map[uint64]string),
-			[]EncodingOptions{},
-			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
-		},
-		{
-			"malformed varint when decoding packed bytes",
-			[]byte{14, 175},
-			new([]byte),
-			[]EncodingOptions{PackedBytes()},
 			errors.New("load convert fail: malformed tag: varint terminated prematurely"),
 		},
 		{
 			"insufficient data for document decode",
 			[]byte{13, 63, 6, 53, 86, 101, 97, 114, 3, 123, 102, 111, 111, 6, 98, 97, 114},
 			new(Document),
-			[]EncodingOptions{},
 			errors.New("insufficient data in wire for decode"),
 		},
 		{
 			"load tag varint terminated prematurely: string array",
 			[]byte{14, 47, 6, 230, 102, 111, 111},
 			new([]string),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: bytes slice",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
 			new([][]byte),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: bytes array",
 			[]byte{14, 47, 6, 230, 1, 1, 1},
 			new([2][]byte),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: string map",
 			[]byte{14, 79, 6, 54, 102, 230, 1, 1, 1, 1, 1, 1},
 			new(map[string]string),
-			[]EncodingOptions{},
-			MalformedTagError{"varint terminated prematurely"},
-		},
-		{
-			"load tag varint terminated prematurely: bytes",
-			[]byte{14, 47, 7, 231, 102, 111, 111},
-			new([]byte),
-			[]EncodingOptions{PackedBytes()},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: string map",
 			[]byte{14, 63, 6, 54, 230, 1, 1, 1, 1, 1, 1},
 			new(map[string]string),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: float32 slice",
 			[]byte{14, 47, 7, 231, 102, 111, 111},
 			new([]float32),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: float64 slice",
 			[]byte{14, 47, 7, 231, 102, 111, 111, 231, 102, 111, 111},
 			new([]float64),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: big int slice",
 			[]byte{14, 47, 5, 165, 1, 44, 250},
 			new([]big.Int),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: uint64 slice",
 			[]byte{14, 47, 3, 131},
 			new([]uint64),
-			[]EncodingOptions{},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 		{
 			"load tag varint terminated prematurely: custom struct",
 			[]byte{14, 47, 6, 203},
 			new(CustomEncodeObject),
-			[]EncodingOptions{},
-			MalformedTagError{"varint terminated prematurely"},
-		},
-		{
-			"load tag varint terminated prematurely: doc string map",
-			[]byte{13, 47, 6, 53, 98, 111, 111, 131},
-			new(map[string]int),
-			[]EncodingOptions{DocStringMaps()},
 			MalformedTagError{"varint terminated prematurely"},
 		},
 	}
 
 	for tno, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Depolorize(test.object, test.wire, test.options...)
+			err := Depolorize(test.object, test.wire)
 			assert.EqualError(t, err, test.err.Error(), "[%v] Input: %v", tno, test.wire)
 		})
 	}

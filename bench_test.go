@@ -84,6 +84,11 @@ func BenchmarkEncoding(b *testing.B) {
 	})
 }
 
+// mixedDocument is a MixedObject that is a DocumentStruct
+type mixedDocument MixedObject
+
+func (mixedDocument) PoloDocument() {}
+
 func BenchmarkDocument(b *testing.B) {
 	object := MixedObject{
 		A: "Sins & Virtues",
@@ -96,7 +101,7 @@ func BenchmarkDocument(b *testing.B) {
 	document, _ := PolorizeDocument(object)
 	docwire := document.Bytes()
 
-	newObject := new(MixedObject)
+	newObject := new(mixedDocument)
 	newDocument := make(Document)
 
 	b.Run("Doc Encode", func(b *testing.B) {
@@ -108,7 +113,7 @@ func BenchmarkDocument(b *testing.B) {
 	b.Run("Doc Decode", func(b *testing.B) {
 		b.Run("Struct", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = Depolorize(newObject, docwire, DocStructs())
+				_ = Depolorize(newObject, docwire)
 			}
 		})
 

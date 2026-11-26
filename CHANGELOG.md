@@ -3,8 +3,10 @@
 ## v0.5.0 (unreleased)
 
 The decoder is now canonical: it accepts exactly the bytes that the encoder produces, so every value
-has one encoding. Null and UTF-8 handling follow one rule each. The encoder writes the same bytes as
-v0.4.10 for every value it encodes, with the exceptions listed under "Behaviour changes for data go-polo wrote".
+has one encoding. Null and UTF-8 handling follow one rule each. There are no encoding options: each type
+has one wire form, and a struct type selects the document form with the `DocumentStruct` interface.
+The encoder writes the same bytes as v0.4.10 for every value it encodes without options, with the
+exceptions listed under "Behaviour changes for data go-polo wrote".
 
 ### Fixed
 
@@ -27,9 +29,29 @@ v0.4.10 for every value it encodes, with the exceptions listed under "Behaviour 
 - `ErrInvalidUTF8`: matched by the error for a string that is not valid UTF-8.
 - `IncompatibleWireError` and `IncompatibleValueError` unwrap to these sentinels.
 - A nil `*Depolorizer` is safe to use: it has no elements.
-- `Document.Get` accepts `EncodingOptions`, like `Document.Set`. Give the options that `Set` used for the value.
-- `ExtensibleDocStructs`: `DocStructs` with a decoder that ignores unknown keys and permits absent keys.
+- `DocumentStruct`: a struct type with the method `PoloDocument()` is encoded as a document at all levels,
+  and the decoder accepts only a document for it. It replaces the `DocStructs` option.
+- `MaxDepth`: the nesting limit of the decoder, a constant (1,000 levels).
 - `Polorizer.Err`: the first error of `PolorizeString`, `PolorizeDocument` and `PolorizePacked`, which have no error result.
+
+### Removed
+
+There are no encoding options. Each type has one wire form, so the encoder and the decoder cannot use
+different forms, and a custom codec cannot get other forms than the reflective code around it.
+
+- `EncodingOptions`, `PackedBytes`, `DocStructs`, `DocStringMaps` and the `MaxDepth` option.
+  `DefaultMaxDepth` is replaced by the constant `MaxDepth`.
+- The `options` parameter of `Polorize`, `Depolorize`, `NewPolorizer`, `NewDepolorizer`, `PolorizeDocument`,
+  `Document.Get` and `Document.Set`. A call without options compiles unchanged. A call with an option does
+  not compile:
+
+| v0.4.10 | v0.5.0 |
+|---|---|
+| `Polorize(x, DocStructs())`, `Depolorize(&x, data, DocStructs())` | add `func (T) PoloDocument() {}` to the struct type `T`, and to each struct type in it that is a document, then `Polorize(x)` and `Depolorize(&x, data)` |
+| `PolorizeDocument(x, DocStructs())` for a struct without struct fields | `PolorizeDocument(x)` (the same bytes) |
+| `DocStringMaps()` | a map is a pack. For a document, use a `Document` or a `DocumentStruct` |
+| `PackedBytes()` | bytes are a word |
+| `MaxDepth(n)` | the limit is fixed at `MaxDepth` (1,000) |
 
 ### Behaviour changes for wires go-polo never produced
 
@@ -42,12 +64,12 @@ These wires used to decode and are now errors:
 - a `[N]T` from a pack with more than N elements, and a struct pack with extra elements
 - a pack whose first element doesn't start at offset 0, or a pack without elements that has data
 - unsorted or duplicate map keys and document keys, NaN map keys, and map key types that the encoder can't order
-- a `[]byte` from a pack without the `PackedBytes` option
+- a `[]byte` or `[N]byte` from a pack
 - a Null into a bool, integer, float, string, array, struct or `big.Int` value, at any level
   (this used to give the zero value or leave the target untouched)
-- a document for a struct (`DocStructs`) that does not have exactly the keys of the struct: an absent key
-  used to give the zero value, and an unknown key used to be ignored, with any data as its value.
-  `ExtensibleDocStructs` keeps the old behaviour
+- a document for a struct with a key that is not the key of a field (`DocStructs` used to ignore it, with any
+  data as its value). An absent key still gives the zero value
+- a document for a struct that is not a `DocumentStruct`, a pack for a `DocumentStruct`, and a document for a map
 - an element with a reserved wire type (8 to 12) or a Load (15) into an `Any`
 
 Null now decodes to nil for `Any` (it used to give `Any{0}`) and for `Raw`, `DepolorizeRaw` and
@@ -63,24 +85,18 @@ Null now decodes to nil for `Any` (it used to give `Any{0}`) and for `Raw`, `Dep
 - **A pointer to a type with a custom codec** decodes a Null as nil. It used to call the custom `Depolorize`,
   which often returned a non-nil zero value. `Polorizer.Bytes()` returns a Null for a Polorizer without
   elements, so a custom `Polorize` that writes nothing for an empty value now decodes as nil.
-- **A DocStructs field with a Null value** is an error unless the field can be nil. It used to be skipped.
-- **A map value from a document (DocStringMaps) that is Null** is kept as a nil entry. It used to be dropped.
+- **A document struct field with a Null value** is an error unless the field can be nil. It used to be skipped.
 - **A float32 signaling NaN** keeps its bits on encode. It used to be written as a quiet NaN.
 - **An `Any` that the decoder rejects** is an error on encode: a tag that is not minimal, a tag with an offset,
   a reserved wire type or a Load, or a Null, False or True with data. v0.4.10 rewrote the tag (`83 00 05`
   became `03 05`) and wrote `00 ff`, which decoded as `00` without the `ff`. An `Any` from `DepolorizeAny`
   is always accepted.
-- **`PackedBytes`, `DocStructs` and `DocStringMaps` are switches.** With an option, the decoder accepts only
-  the form that the encoder writes with that option. It used to accept the two forms: a word or a pack for
-  bytes, and a pack or a document for a struct or a string map. Thus, data that was encoded without an option
-  no longer decodes with that option. One case is `PolorizeDocument(object)` without `DocStructs`: a struct
-  in a field is a pack, so the bytes no longer decode into the object with `DocStructs`. Give `DocStructs`
-  to `PolorizeDocument`, or decode the bytes into a `Document` and use `Get` for each value.
-- **A custom `Depolorize` method gets the default forms.** Its `Depolorizer` no longer has the `PackedBytes`,
-  `DocStructs` and `DocStringMaps` options of the caller (v0.4.10 added this as GO-8). A custom `Polorize`
-  method does not receive these options, so it writes the default forms, and now its decoder accepts only
-  them. `MaxDepth` is still inherited. A method that must decode another form can read the element with
-  `DepolorizeAny` and call `Depolorize` with the option.
+- **Data written with an option** decodes only into types with the same forms. Data written with
+  `DocStructs` decodes into `DocumentStruct` types (also the nested structs must be `DocumentStruct` types).
+  Data written with `PackedBytes` (bytes as a pack) or `DocStringMaps` (string maps as documents) no longer
+  decodes into bytes or maps. Read such a pack with `DepolorizePacked` and `DepolorizeAny`, and such a
+  document as a `Document`. A custom `Depolorize` method no longer gets options from the caller (v0.4.10
+  added this as GO-8), because there are none.
 - **A custom `Depolorize` method must read all the data of its element.** The decoder returns an error if the
   method returns without an error and leaves the element unread, or does not read all the elements of a pack
   that it unpacked with `DepolorizePacked`. A method can leave a Null unread. Data that a method skipped
@@ -91,11 +107,9 @@ Null now decodes to nil for `Any` (it used to give `Any{0}`) and for `Raw`, `Dep
 - **A float map key that is `-0`** is written as `+0`, also in an array key, because the two zeros are the
   same key of a Go map. A map with a `-0` key that an earlier version wrote no longer decodes.
   A `-0` that is not a map key keeps its bits.
-- **A value that `Document.Set` wrote with `PackedBytes`** needs the same option in `Document.Get`. `Get` used
-  to decode packed bytes without the option.
-- **A wire with more than 1,000 nesting levels** is an error with the default options (`ErrMaxDepthExceeded`).
-  `DefaultMaxDepth` is now 1,000 (it was 10,000), because 10,000 levels overflow a 2 MiB thread stack in rs-polo
-  and both libraries keep the same limit. Use `MaxDepth` to set another limit.
+- **A wire with more than 1,000 nesting levels** is an error (`ErrMaxDepthExceeded`). The limit is the constant
+  `MaxDepth`. It was `DefaultMaxDepth` (10,000) and the `MaxDepth` option could change it. 10,000 levels
+  overflow a 2 MiB thread stack in rs-polo, and both libraries keep the same limit.
 
 ## v0.4.10
 

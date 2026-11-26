@@ -16,16 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// canonicalDoc and canonicalDocPtr are DocumentStructs for the canonical tests
+type canonicalDoc struct{ A uint64 }
+
+func (canonicalDoc) PoloDocument() {}
+
+type canonicalDocPtr struct{ A *uint64 }
+
+func (canonicalDocPtr) PoloDocument() {}
+
+type canonicalDocAB struct{ A, B uint64 }
+
+func (canonicalDocAB) PoloDocument() {}
+
 // requireRoundtrip decodes the wire into a new value of the type of target and
 // checks that the value is expected and that it encodes back into the same wire
-func requireRoundtrip(t *testing.T, wire []byte, expected any, options ...EncodingOptions) {
+func requireRoundtrip(t *testing.T, wire []byte, expected any) {
 	t.Helper()
 
 	object := reflect.New(reflect.TypeOf(expected))
-	require.NoError(t, Depolorize(object.Interface(), wire, options...))
+	require.NoError(t, Depolorize(object.Interface(), wire))
 	require.Equal(t, expected, object.Elem().Interface())
 
-	encoded, err := Polorize(object.Elem().Interface(), options...)
+	encoded, err := Polorize(object.Elem().Interface())
 	require.NoError(t, err)
 	require.Equal(t, wire, encoded)
 }
@@ -344,11 +357,11 @@ func TestN1_NullIsNil(t *testing.T) {
 		requireRoundtrip(t, wire, map[string][]string{"a": nil})
 	})
 
-	t.Run("document string maps", func(t *testing.T) {
-		// A WireNull value is kept as a nil entry (it used to be dropped)
-		wire := Document{"a": Raw{0}}.Bytes()
+	t.Run("document struct fields", func(t *testing.T) {
+		// A WireNull value is a nil field, and the key stays in the document
+		wire := Document{"A": Raw{0}}.Bytes()
 
-		requireRoundtrip(t, wire, map[string]*uint64{"a": nil}, DocStringMaps())
+		requireRoundtrip(t, wire, canonicalDocPtr{A: nil})
 	})
 }
 
@@ -423,7 +436,7 @@ func TestN2_NullIntoValue(t *testing.T) {
 		{
 			"document struct field",
 			Document{"A": Raw{0}}.Bytes(),
-			&Inner{5},
+			&canonicalDoc{5},
 		},
 	}
 
@@ -431,13 +444,7 @@ func TestN2_NullIntoValue(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			before := reflect.ValueOf(test.target).Elem().Interface()
 
-			// DocStructs is a switch, so only the test with a document has it
-			var options []EncodingOptions
-			if test.name == "document struct field" {
-				options = append(options, DocStructs())
-			}
-
-			err := Depolorize(test.target, test.wire, options...)
+			err := Depolorize(test.target, test.wire)
 			require.ErrorIs(t, err, ErrNullValue)
 
 			var wireErr IncompatibleWireError
@@ -749,7 +756,7 @@ func TestCanonical_Rejected(t *testing.T) {
 		{"top-level offset", hexWire(t, "1305"), new(uint64), "malformed tag: non-zero offset in top-level tag"},
 		{"top-level offset (any)", hexWire(t, "7305"), new(Any), "malformed tag: non-zero offset in top-level tag"},
 		{
-			"top-level offset (document value)", Document{"A": Raw{0x13, 5}}.Bytes(), new(struct{ A uint64 }),
+			"top-level offset (document value)", Document{"A": Raw{0x13, 5}}.Bytes(), new(canonicalDoc),
 			"malformed tag: non-zero offset in top-level tag",
 		},
 		// C3: minimal integers
@@ -900,7 +907,7 @@ func TestCanonical_Rejected(t *testing.T) {
 			"incompatible wire: document keys are not in strictly ascending order",
 		},
 		{
-			"unsorted document struct keys", docWire("B", "A"), new(struct{ A, B uint64 }),
+			"unsorted document struct keys", docWire("B", "A"), new(canonicalDocAB),
 			"incompatible wire: document keys are not in strictly ascending order",
 		},
 		{
@@ -921,39 +928,19 @@ func TestCanonical_Rejected(t *testing.T) {
 			}), new(Document),
 			"incompatible wire: nil value",
 		},
-		// Packed bytes: every byte is a WirePosInt with exactly one byte (as the encoder writes it)
-		{"packed byte without data", hexWire(t, "0e1f03"), new([]byte), "incompatible wire: missing data for packed byte"},
-		{"packed byte as null", hexWire(t, "0e1f00"), new([]byte), "incompatible wire: nil value"},
+		// Bytes are a word. A pack of bytes is not a form of bytes
 		{
-			"packed byte with excess data", hexWire(t, "0e1f030102"), new([]byte),
-			"incompatible value error: excess data for 8-bit integer",
+			"pack for bytes", hexWire(t, "0e1f0301"), new([]byte),
+			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, word}",
 		},
-	}
-
-	// The options are switches, so only the tests that need the other form of a type have one
-	options := map[string][]EncodingOptions{
-		"top-level offset (document value)": {DocStructs()},
-		"unsorted document struct keys":     {DocStructs()},
-		"packed byte without data":          {PackedBytes()},
-		"packed byte as null":               {PackedBytes()},
-		"packed byte with excess data":      {PackedBytes()},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Depolorize(test.target, test.wire, options[test.name]...)
+			err := Depolorize(test.target, test.wire)
 			require.EqualError(t, err, test.err)
 		})
 	}
-
-	t.Run("packed bytes with zero bytes", func(t *testing.T) {
-		// The encoder writes a zero byte as a WirePosInt with one zero byte
-		wire, err := Polorize([]byte{0, 1, 0}, PackedBytes())
-		require.NoError(t, err)
-		require.Equal(t, hexWire(t, "0e3f0313230001"+"00"), wire)
-
-		requireRoundtrip(t, wire, []byte{0, 1, 0}, PackedBytes())
-	})
 }
 
 // packWireOf returns a compound wire of the given wire type with the elements written by the given function
@@ -990,9 +977,7 @@ func TestCanonical_Accepted(t *testing.T) {
 	requireRoundtrip(t, hexWire(t, "0e2f0303"), []uint64{0, 0})
 	requireRoundtrip(t, hexWire(t, "0e2f0000"), []*uint64{nil, nil})
 	requireRoundtrip(t, docWire("", "a", "b"), Document{"": Raw{3, 1}, "a": Raw{3, 1}, "b": Raw{3, 1}})
-	requireRoundtrip(t, Document{"A": Raw{3, 1}}.Bytes(), struct{ A uint64 }{1}, DocStructs())
-	requireRoundtrip(t, Document{"a": Raw{3, 1}, "b": Raw{3, 2}}.Bytes(),
-		map[string]uint64{"a": 1, "b": 2}, DocStringMaps())
+	requireRoundtrip(t, Document{"A": Raw{3, 1}}.Bytes(), canonicalDoc{1})
 
 	// An Any holds any element as is (only its tag must be canonical)
 	requireRoundtrip(t, hexWire(t, "0e2f13230005"), Any(hexWire(t, "0e2f13230005")))
@@ -1159,13 +1144,10 @@ func TestU2_EncodeUTF8(t *testing.T) {
 	}
 
 	t.Run("document encoding", func(t *testing.T) {
-		_, err := Polorize(map[string]uint64{invalid: 1}, DocStringMaps())
+		_, err := PolorizeDocument(struct{ S string }{invalid})
 		require.ErrorIs(t, err, ErrInvalidUTF8)
 
-		_, err = Polorize(struct{ S string }{invalid}, DocStructs())
-		require.ErrorIs(t, err, ErrInvalidUTF8)
-
-		_, err = Polorize(Tagged{1}, DocStructs())
+		_, err = PolorizeDocument(Tagged{1})
 		require.ErrorIs(t, err, ErrInvalidUTF8)
 
 		_, err = PolorizeDocument(map[string]uint64{invalid: 1})
@@ -1289,23 +1271,46 @@ var canonicalTargets = []reflect.Type{
 	reflect.TypeFor[**string](), reflect.TypeFor[[]*uint64](), reflect.TypeFor[struct{}](),
 	reflect.TypeFor[canonicalObject](), reflect.TypeFor[*canonicalObject](), reflect.TypeFor[[]canonicalObject](),
 	reflect.TypeFor[map[string]canonicalObject](),
+	reflect.TypeFor[canonicalDoc](), reflect.TypeFor[canonicalDocObject](), reflect.TypeFor[*canonicalDocObject](),
+	reflect.TypeFor[[]canonicalDocObject](), reflect.TypeFor[map[string]canonicalDocObject](),
 }
 
-// canonicalConfigs are the configurations that FuzzCanonical uses for each input. PackedBytes, DocStructs
-// and DocStringMaps are switches, so the canonical rule applies to each configuration.
-// ExtensibleDocStructs is not here, because a decode with it is not canonical.
-var canonicalConfigs = map[string][]EncodingOptions{
-	"default":       {MaxDepth(64)},
-	"PackedBytes":   {MaxDepth(64), PackedBytes()},
-	"DocStructs":    {MaxDepth(64), DocStructs()},
-	"DocStringMaps": {MaxDepth(64), DocStringMaps()},
-	"all options":   {MaxDepth(64), PackedBytes(), DocStructs(), DocStringMaps()},
+// canonicalDocObject is a DocumentStruct with a field of each form: a nested DocumentStruct, a struct that
+// is a pack, and a map and a slice of DocumentStructs
+type canonicalDocObject struct {
+	U   uint64                  `polo:"u"`
+	S   string                  `polo:"s"`
+	P   *uint64                 `polo:"p"`
+	Doc canonicalDoc            `polo:"doc"`
+	In  struct{ A uint64 }      `polo:"in"`
+	Ms  map[string]canonicalDoc `polo:"ms"`
+	Ls  []canonicalDocPtr       `polo:"ls"`
+	Ptr *canonicalDocObject     `polo:"ptr"`
+}
+
+func (canonicalDocObject) PoloDocument() {}
+
+// hasDocumentStruct returns whether a type is or holds a DocumentStruct
+func hasDocumentStruct(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Slice, reflect.Array:
+		return hasDocumentStruct(t.Elem())
+	case reflect.Map:
+		return hasDocumentStruct(t.Key()) || hasDocumentStruct(t.Elem())
+	case reflect.Struct:
+		return getStructInfo(t).document
+	default:
+		return false
+	}
 }
 
 // FuzzCanonical checks that the decoder accepts only canonical wires: every wire that decodes into one
 // of the canonicalTargets (without a panic) must encode back into exactly the same bytes. The encoder
 // rejects strings that are not valid UTF-8, so this also checks that every decoded string is valid UTF-8.
-// The check runs for each of the canonicalConfigs, with the same options for the decoder and the encoder.
+//
+// A DocumentStruct gives the zero value to the field of an absent key, so a wire without a key encodes back
+// with the key. For a target that is or holds a DocumentStruct, the check is that the encoded wire decodes
+// into the same value and encodes back into the same bytes.
 //
 // Run it with: go test -run '^$' -fuzz FuzzCanonical -fuzztime 30m
 func FuzzCanonical(f *testing.F) {
@@ -1334,14 +1339,18 @@ func FuzzCanonical(f *testing.F) {
 			Mh: map[[2]byte]bool{{9, 9}: false}, Mf: map[float64]int8{-0.5: 1}, Mb: map[bool]string{true: "t"},
 			Mp: map[string]*uint64{"n": nil, "v": &value},
 		},
+		canonicalDoc{A: 1},
+		canonicalDocObject{
+			U: 1, S: "s", P: &value, Doc: canonicalDoc{A: 2}, In: struct{ A uint64 }{3},
+			Ms: map[string]canonicalDoc{"k": {A: 4}}, Ls: []canonicalDocPtr{{A: &value}, {}},
+			Ptr: &canonicalDocObject{U: 5},
+		},
 	}
 
 	for _, seed := range seeds {
-		for _, options := range canonicalConfigs {
-			wire, err := Polorize(seed, options...)
-			require.NoError(f, err)
-			f.Add(wire)
-		}
+		wire, err := Polorize(seed)
+		require.NoError(f, err)
+		f.Add(wire)
 	}
 
 	for _, seed := range []string{
@@ -1355,30 +1364,62 @@ func FuzzCanonical(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, wire []byte) {
-		for config, options := range canonicalConfigs {
-			for _, target := range canonicalTargets {
-				object := reflect.New(target)
-				if err := Depolorize(object.Interface(), wire, options...); err != nil {
-					continue
-				}
+		for _, target := range canonicalTargets {
+			object := reflect.New(target)
+			if err := Depolorize(object.Interface(), wire); err != nil {
+				continue
+			}
 
-				encoded, err := Polorize(object.Elem().Interface(), options...)
-				if err != nil {
-					t.Fatalf("%v (%v): %x decodes but does not encode: %v", target, config, wire, err)
-				}
+			encoded, err := Polorize(object.Elem().Interface())
+			if err != nil {
+				t.Fatalf("%v: %x decodes but does not encode: %v", target, wire, err)
+			}
 
-				if !bytes.Equal(wire, encoded) {
-					t.Fatalf("%v (%v): %x decodes but encodes as %x", target, config, wire, encoded)
-				}
+			if bytes.Equal(wire, encoded) {
+				continue
+			}
+
+			if !hasDocumentStruct(target) {
+				t.Fatalf("%v: %x decodes but encodes as %x", target, wire, encoded)
+			}
+
+			// A document with an absent key: the encoded wire must be a fixed point
+			again := reflect.New(target)
+			if err := Depolorize(again.Interface(), encoded); err != nil {
+				t.Fatalf("%v: %x encodes as %x, which does not decode: %v", target, wire, encoded, err)
+			}
+
+			if !reflect.DeepEqual(object.Elem().Interface(), again.Elem().Interface()) {
+				t.Fatalf("%v: %x encodes as %x, which decodes into another value", target, wire, encoded)
+			}
+
+			reencoded, err := Polorize(again.Elem().Interface())
+			if err != nil || !bytes.Equal(encoded, reencoded) {
+				t.Fatalf("%v: %x encodes as %x, which encodes as %x (%v)", target, wire, encoded, reencoded, err)
 			}
 		}
 	})
 }
 
-// TestCanonical_OptionForms checks that PackedBytes, DocStructs and DocStringMaps are switches: with an
-// option, the encoder writes only the other form of a type and the decoder accepts only that form.
-// Thus, a value has one wire for each configuration. Earlier versions accepted both forms with the option.
-func TestCanonical_OptionForms(t *testing.T) {
+// docPair is a DocumentStruct for the form tests
+type docPair struct {
+	A uint64
+	B string
+}
+
+func (docPair) PoloDocument() {}
+
+// docPointerPair is a DocumentStruct with a pointer receiver
+type docPointerPair struct {
+	A uint64
+	B string
+}
+
+func (*docPointerPair) PoloDocument() {}
+
+// TestCanonical_TypeForms checks that each type has one form: bytes are a word, a map is a pack (also with
+// string keys), a struct is a pack, and a DocumentStruct is a document. The decoder rejects the other form.
+func TestCanonical_TypeForms(t *testing.T) {
 	type Pair struct {
 		A uint64
 		B string
@@ -1390,79 +1431,58 @@ func TestCanonical_OptionForms(t *testing.T) {
 
 	const (
 		wantWord = "incompatible wire: unexpected wiretype 'pack'. expected one of: {null, word}"
-		wantPack = "incompatible wire: unexpected wiretype 'word'. expected one of: {null, pack}"
 		noDoc    = "incompatible wire: unexpected wiretype 'document'. expected one of: {null, pack}"
 		wantDoc  = "incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}"
 	)
 
-	// The bytes 1, 2 as a word and as a pack
-	word, packed := hexWire(t, "060102"), hexWire(t, "0e2f03130102")
+	packedBytes := hexWire(t, "0e2f03130102")
+	pairPack := hexWire(t, "0e2f03160541")
+	pairDoc := Document{"A": Raw{3, 5}, "B": Raw{6, 0x41}}.Bytes()
 
 	tests := []struct {
-		name   string
-		value  any
-		option EncodingOptions
-		// plain is the wire without the option and form is the wire with the option
-		plain, form []byte
-		// plainErr is the error for the form wire without the option, formErr for the plain wire with the option
-		plainErr, formErr string
+		name  string
+		value any
+		// wire is the form of the type and other is a wire of the other form
+		wire, other []byte
+		// err is the error for the other wire
+		err string
 	}{
-		{"bytes", []byte{1, 2}, PackedBytes(), word, packed, wantWord, wantPack},
-		{"empty bytes", []byte{}, PackedBytes(), hexWire(t, "06"), hexWire(t, "0e0f"), wantWord, wantPack},
-		{"named bytes", canonicalBytes{1, 2}, PackedBytes(), word, packed, wantWord, wantPack},
-		{"byte array", [2]byte{1, 2}, PackedBytes(), word, packed, wantWord, wantPack},
-		{"named byte array", Hash{1, 2}, PackedBytes(), word, packed, wantWord, wantPack},
-		{
-			"struct",
-			Pair{5, "A"},
-			DocStructs(),
-			hexWire(t, "0e2f03160541"), Document{"A": Raw{3, 5}, "B": Raw{6, 0x41}}.Bytes(),
-			noDoc, wantDoc,
-		},
-		{"empty struct", struct{}{}, DocStructs(), hexWire(t, "0e0f"), hexWire(t, "0d0f"), noDoc, wantDoc},
+		{"bytes", []byte{1, 2}, hexWire(t, "060102"), packedBytes, wantWord},
+		{"empty bytes", []byte{}, hexWire(t, "06"), hexWire(t, "0e0f"), wantWord},
+		{"named bytes", canonicalBytes{1, 2}, hexWire(t, "060102"), packedBytes, wantWord},
+		{"byte array", [2]byte{1, 2}, hexWire(t, "060102"), packedBytes, wantWord},
+		{"named byte array", Hash{1, 2}, hexWire(t, "060102"), packedBytes, wantWord},
+		{"struct", Pair{5, "A"}, pairPack, pairDoc, noDoc},
+		{"empty struct", struct{}{}, hexWire(t, "0e0f"), hexWire(t, "0d0f"), noDoc},
+		{"document struct", docPair{5, "A"}, pairDoc, pairPack, wantDoc},
+		{"document struct with a pointer receiver", docPointerPair{5, "A"}, pairDoc, pairPack, wantDoc},
+		{"pointer to a document struct", &docPair{5, "A"}, pairDoc, pairPack, wantDoc},
 		{
 			"string map",
 			map[string]uint64{"a": 1},
-			DocStringMaps(),
-			hexWire(t, "0e2f06136101"), Document{"a": Raw{3, 1}}.Bytes(),
-			noDoc, wantDoc,
+			hexWire(t, "0e2f06136101"), Document{"a": Raw{3, 1}}.Bytes(), noDoc,
 		},
 		{
 			"named string map",
 			map[Name]uint64{"a": 1},
-			DocStringMaps(),
-			hexWire(t, "0e2f06136101"), Document{"a": Raw{3, 1}}.Bytes(),
-			noDoc, wantDoc,
+			hexWire(t, "0e2f06136101"), Document{"a": Raw{3, 1}}.Bytes(), noDoc,
 		},
-		{
-			"empty string map",
-			map[string]uint64{},
-			DocStringMaps(),
-			hexWire(t, "0e0f"), hexWire(t, "0d0f"),
-			noDoc, wantDoc,
-		},
+		{"empty string map", map[string]uint64{}, hexWire(t, "0e0f"), hexWire(t, "0d0f"), noDoc},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// The encoder writes one form for each configuration
-			plain, err := Polorize(test.value)
+			// The encoder writes the form of the type, and the wire makes a round trip
+			wire, err := Polorize(test.value)
 			require.NoError(t, err)
-			require.Equal(t, test.plain, plain)
+			require.Equal(t, test.wire, wire)
 
-			form, err := Polorize(test.value, test.option)
-			require.NoError(t, err)
-			require.Equal(t, test.form, form)
+			requireRoundtrip(t, wire, test.value)
 
-			// Each wire decodes with its configuration
-			requireRoundtrip(t, plain, test.value)
-			requireRoundtrip(t, form, test.value, test.option)
-
-			// ... and the decoder rejects it with the other configuration
+			// The decoder rejects the other form, and does not change the target
 			target := reflect.New(reflect.TypeOf(test.value))
 
-			require.EqualError(t, Depolorize(target.Interface(), form), test.plainErr)
-			require.EqualError(t, Depolorize(target.Interface(), plain, test.option), test.formErr)
+			require.EqualError(t, Depolorize(target.Interface(), test.other), test.err)
 			require.True(t, target.Elem().IsZero())
 		})
 	}
@@ -1475,22 +1495,21 @@ func TestCanonical_OptionForms(t *testing.T) {
 			p.PolorizeBytes(hash)
 		})
 
-		packs := NewPolorizer(PackedBytes())
-		packs.PolorizeBytes(hash)
-		packs.PolorizeBytes(hash)
+		// Two packs: a pack is not a form of bytes
+		packs := packWire(func(p *Polorizer) {
+			require.NoError(t, p.Polorize([]uint16{7}))
+			require.NoError(t, p.Polorize([]uint16{7}))
+		})
 
 		for _, test := range []struct {
-			wire    []byte
-			options []EncodingOptions
-			err     string
+			wire []byte
+			err  string
 		}{
-			{words, nil, ""},
-			{packs.Packed(), []EncodingOptions{PackedBytes()}, ""},
-			{words, []EncodingOptions{PackedBytes()}, wantPack},
-			{packs.Packed(), nil, wantWord},
+			{words, ""},
+			{packs, wantWord},
 		} {
 			for _, array := range []bool{false, true} {
-				depolorizer, err := NewDepolorizer(test.wire, test.options...)
+				depolorizer, err := NewDepolorizer(test.wire)
 				require.NoError(t, err)
 
 				depolorizer, err = depolorizer.DepolorizePacked()
@@ -1519,187 +1538,224 @@ func TestCanonical_OptionForms(t *testing.T) {
 		}
 	})
 
-	t.Run("a null is nil in both forms", func(t *testing.T) {
-		requireRoundtrip(t, []byte{0}, []byte(nil), PackedBytes())
-		requireRoundtrip(t, []byte{0}, map[string]uint64(nil), DocStringMaps())
-		requireRoundtrip(t, []byte{0}, (*Pair)(nil), DocStructs())
-	})
-
-	t.Run("an option does not change other types", func(t *testing.T) {
-		all := []EncodingOptions{PackedBytes(), DocStructs(), DocStringMaps()}
-
-		// A string is a word and an integer keyed map is a pack with all options. A Document, a Raw
-		// and an Any keep their bytes, and a big.Int is not a struct for the encoding
-		requireRoundtrip(t, hexWire(t, "0661"), "a", all...)
-		requireRoundtrip(t, hexWire(t, "0e2f03130102"), map[uint8]uint8{1: 2}, all...)
-		requireRoundtrip(t, hexWire(t, "0d2f061561060102"), Document{"a": Raw{6, 1, 2}}, all...)
-		requireRoundtrip(t, hexWire(t, "05060102"), Raw{6, 1, 2}, all...)
-		requireRoundtrip(t, hexWire(t, "060102"), Any{6, 1, 2}, all...)
-		requireRoundtrip(t, hexWire(t, "0305"), *big.NewInt(5), all...)
+	t.Run("a null is nil", func(t *testing.T) {
+		requireRoundtrip(t, []byte{0}, []byte(nil))
+		requireRoundtrip(t, []byte{0}, map[string]uint64(nil))
+		requireRoundtrip(t, []byte{0}, (*Pair)(nil))
+		requireRoundtrip(t, []byte{0}, (*docPair)(nil))
 	})
 
 	t.Run("nested values", func(t *testing.T) {
+		// Each value has the form of its own type, at all levels
 		type Outer struct {
+			D docPair
 			P Pair
 			B []byte
-			M map[string][]Pair
+			M map[string][]docPair
 		}
 
-		object := Outer{Pair{1, "x"}, []byte{9}, map[string][]Pair{"k": {{2, "y"}}}}
-		all := []EncodingOptions{PackedBytes(), DocStructs(), DocStringMaps()}
+		object := Outer{docPair{1, "x"}, Pair{2, "y"}, []byte{9}, map[string][]docPair{"k": {{3, "z"}}}}
 
-		wire, err := Polorize(object, all...)
+		wire, err := Polorize(object)
 		require.NoError(t, err)
-		requireRoundtrip(t, wire, object, all...)
 
-		// The options reach all levels, so each subset of the options rejects the wire
-		for _, options := range [][]EncodingOptions{
-			nil,
-			{PackedBytes()},
-			{DocStructs()},
-			{DocStringMaps()},
-			{PackedBytes(), DocStructs()},
-			{PackedBytes(), DocStringMaps()},
-			{DocStructs(), DocStringMaps()},
-		} {
-			var decoded Outer
+		require.Equal(t, packWire(func(p *Polorizer) {
+			p.PolorizeDocument(Document{"A": Raw{3, 1}, "B": Raw{6, 'x'}})
+			require.NoError(t, p.Polorize(Pair{2, "y"}))
+			p.PolorizeBytes([]byte{9})
+			p.PolorizePacked(func() *Polorizer {
+				entries := NewPolorizer()
+				entries.PolorizeString("k")
+				entries.PolorizePacked(func() *Polorizer {
+					elements := NewPolorizer()
+					elements.PolorizeDocument(Document{"A": Raw{3, 3}, "B": Raw{6, 'z'}})
 
-			require.Error(t, Depolorize(&decoded, wire, options...))
-		}
+					return elements
+				}())
 
-		// Document.Get decodes a value with the options that Document.Set used
+				return entries
+			}())
+		}), wire)
+
+		requireRoundtrip(t, wire, object)
+
+		// Document.Set and Document.Get use the same forms
 		document := make(Document)
-		require.NoError(t, document.Set("k", object, all...))
+		require.NoError(t, document.Set("k", object))
 		require.Equal(t, Raw(wire), document.GetRaw("k"))
 
 		var decoded Outer
 
-		require.Error(t, document.Get("k", &decoded))
-		require.NoError(t, document.Get("k", &decoded, all...))
+		require.NoError(t, document.Get("k", &decoded))
 		require.Equal(t, object, decoded)
+	})
+
+	t.Run("other types", func(t *testing.T) {
+		// A Document, a Raw and an Any keep their bytes, and a big.Int is not a struct for the encoding
+		requireRoundtrip(t, hexWire(t, "0d2f061561060102"), Document{"a": Raw{6, 1, 2}})
+		requireRoundtrip(t, hexWire(t, "05060102"), Raw{6, 1, 2})
+		requireRoundtrip(t, hexWire(t, "060102"), Any{6, 1, 2})
+		requireRoundtrip(t, hexWire(t, "0305"), *big.NewInt(5))
 	})
 }
 
-// TestCanonical_DocStructKeys checks that a document decodes into a struct (DocStructs) only if it has
-// exactly one key for each encoded field. With an absent key or an unknown key, different documents would
-// decode into the same struct. ExtensibleDocStructs permits the two cases.
+// keysObject, keysTagged, keysEmpty and keysOuter are DocumentStructs for the key tests
+type keysObject struct {
+	A int
+	P *int
+}
+
+func (keysObject) PoloDocument() {}
+
+type keysTagged struct {
+	A int `polo:"x"`
+	B int `polo:"-"`
+	c int //nolint:unused // a field that is not exported has no key
+}
+
+func (keysTagged) PoloDocument() {}
+
+type keysEmpty struct{}
+
+func (keysEmpty) PoloDocument() {}
+
+type keysOuter struct{ In keysObject }
+
+func (keysOuter) PoloDocument() {}
+
+// keysDuplicate has two fields with the same key
+type keysDuplicate struct {
+	A int `polo:"x"`
+	B int `polo:"x"`
+}
+
+func (keysDuplicate) PoloDocument() {}
+
+// keysEmbedded embeds a DocumentStruct, so it is a DocumentStruct too (the method is promoted)
+type keysEmbedded struct {
+	keysEmpty
+	X int
+}
+
+// TestCanonical_DocStructKeys checks the keys of a DocumentStruct. The encoder writes one key for each field.
+// The decoder rejects a key that is not the key of a field, and gives the zero value to the field of an absent
+// key. Thus, a document with an absent key encodes back with the key: that is the exception to the canonical
+// rule, for the documents of an encoder that leaves out a field that has no value.
 func TestCanonical_DocStructKeys(t *testing.T) {
-	type Object struct {
-		A int
-		P *int
-	}
-
-	type Tagged struct {
-		A int `polo:"x"`
-		B int `polo:"-"`
-		c int //nolint:unused // a field that is not exported has no key
-	}
-
-	// The encoder writes all keys, also for zero values. ExtensibleDocStructs writes the same wire
+	// The encoder writes all keys, also for zero values
 	canonical := hexWire(t, "0d4f0615263541035000")
 
-	wire, err := Polorize(Object{}, DocStructs())
+	wire, err := Polorize(keysObject{})
 	require.NoError(t, err)
 	require.Equal(t, canonical, wire)
 
-	wire, err = Polorize(Object{}, ExtensibleDocStructs())
-	require.NoError(t, err)
-	require.Equal(t, canonical, wire)
-
-	requireRoundtrip(t, canonical, Object{}, DocStructs())
-	requireRoundtrip(t, canonical, Object{}, ExtensibleDocStructs())
-	requireRoundtrip(t, Document{"x": Raw{3, 7}}.Bytes(), Tagged{A: 7}, DocStructs())
+	requireRoundtrip(t, canonical, keysObject{})
+	requireRoundtrip(t, Document{"x": Raw{3, 7}}.Bytes(), keysTagged{A: 7})
+	requireRoundtrip(t, hexWire(t, "0d0f"), keysEmpty{})
 
 	five := 5
+
+	t.Run("absent keys", func(t *testing.T) {
+		for _, test := range []struct {
+			name   string
+			wire   []byte
+			object keysObject
+		}{
+			{"no keys", hexWire(t, "0d0f"), keysObject{}},
+			{"absent key", Document{"A": Raw{3, 1}}.Bytes(), keysObject{A: 1}},
+			{"absent key of a pointer", Document{"P": Raw{3, 5}}.Bytes(), keysObject{P: &five}},
+		} {
+			var object keysObject
+
+			require.NoError(t, Depolorize(&object, test.wire), test.name)
+			require.Equal(t, test.object, object, test.name)
+
+			// The struct encodes with all keys
+			encoded, err := Polorize(object)
+			require.NoError(t, err)
+			require.NotEqual(t, test.wire, encoded, test.name)
+			requireRoundtrip(t, encoded, test.object)
+		}
+	})
 
 	tests := []struct {
 		name   string
 		wire   []byte
 		target any
-		object any
 		err    string
 	}{
 		{
-			"no keys", hexWire(t, "0d0f"), new(Object), &Object{},
-			"incompatible wire: struct field [polo.Object.A <int>]: incompatible wire: no document key 'A'",
-		},
-		{
-			"absent key", Document{"A": Raw{3, 1}}.Bytes(), new(Object), &Object{A: 1},
-			"incompatible wire: struct field [polo.Object.P <*int>]: incompatible wire: no document key 'P'",
-		},
-		{
 			// The value of the unknown key is not a valid wire
-			"unknown key", hexWire(t, "0d6f061526354655410350005affff"), new(Object), &Object{},
-			"incompatible wire: unknown document key 'Z' for struct polo.Object",
+			"unknown key", hexWire(t, "0d6f061526354655410350005affff"), new(keysObject),
+			"incompatible wire: unknown document key 'Z' for struct polo.keysObject",
 		},
 		{
-			"unknown keys", Document{"A": Raw{3, 1}, "P": Raw{3, 5}, "b": Raw{0}, "Q": Raw{0}}.Bytes(),
-			new(Object), &Object{A: 1, P: &five},
-			"incompatible wire: unknown document key 'Q' for struct polo.Object",
+			"unknown keys", Document{"A": Raw{3, 1}, "P": Raw{3, 5}, "b": Raw{0}, "Q": Raw{0}}.Bytes(), new(keysObject),
+			"incompatible wire: unknown document key 'Q' for struct polo.keysObject",
 		},
 		{
-			"absent key and unknown key", Document{"A": Raw{3, 1}, "Z": Raw{0}}.Bytes(), new(Object), &Object{A: 1},
-			"incompatible wire: struct field [polo.Object.P <*int>]: incompatible wire: no document key 'P'",
+			"absent key and unknown key", Document{"A": Raw{3, 1}, "Z": Raw{0}}.Bytes(), new(keysObject),
+			"incompatible wire: unknown document key 'Z' for struct polo.keysObject",
 		},
 		{
-			"name of a field with another key", Document{"A": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(Tagged), &Tagged{A: 2},
-			"incompatible wire: unknown document key 'A' for struct polo.Tagged",
+			"name of a field with another key", Document{"A": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(keysTagged),
+			"incompatible wire: unknown document key 'A' for struct polo.keysTagged",
 		},
 		{
-			"key of a skipped field", Document{"B": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(Tagged), &Tagged{A: 2},
-			"incompatible wire: unknown document key 'B' for struct polo.Tagged",
+			"key of a skipped field", Document{"B": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(keysTagged),
+			"incompatible wire: unknown document key 'B' for struct polo.keysTagged",
 		},
 		{
-			"key of a field that is not exported", Document{"c": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(Tagged), &Tagged{A: 2},
-			"incompatible wire: unknown document key 'c' for struct polo.Tagged",
+			"key of a field that is not exported", Document{"c": Raw{3, 1}, "x": Raw{3, 2}}.Bytes(), new(keysTagged),
+			"incompatible wire: unknown document key 'c' for struct polo.keysTagged",
 		},
 		{
-			"key for a struct with no fields", Document{"A": Raw{3, 1}}.Bytes(), new(struct{}), &struct{}{},
-			"incompatible wire: unknown document key 'A' for struct struct {}",
+			"key for a struct with no fields", Document{"A": Raw{3, 1}}.Bytes(), new(keysEmpty),
+			"incompatible wire: unknown document key 'A' for struct polo.keysEmpty",
 		},
 		{
 			"unknown key in a nested struct",
 			Document{"In": Document{"A": Raw{3, 1}, "P": Raw{0}, "Z": Raw{0}}.Bytes()}.Bytes(),
-			new(struct{ In Object }), &struct{ In Object }{Object{A: 1}},
-			"incompatible wire: struct field [struct { In polo.Object }.In <polo.Object>]: " +
-				"incompatible wire: unknown document key 'Z' for struct polo.Object",
+			new(keysOuter),
+			"incompatible wire: struct field [polo.keysOuter.In <polo.keysObject>]: " +
+				"incompatible wire: unknown document key 'Z' for struct polo.keysObject",
+		},
+		{
+			"null for a field that cannot be nil", Document{"A": Raw{0}}.Bytes(), new(keysObject),
+			"incompatible wire: struct field [polo.keysObject.A <int>]: incompatible wire: nil value",
+		},
+		{
+			"value that is not canonical", Document{"A": Raw{3, 0, 5}}.Bytes(), new(keysObject),
+			"incompatible wire: struct field [polo.keysObject.A <int>]: incompatible wire: leading zero byte in integer",
+		},
+		{
+			"pack", hexWire(t, "0e2f030000"), new(keysObject),
+			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// DocStructs rejects the document and does not change the target
-			target := reflect.New(reflect.TypeOf(test.target).Elem())
-
-			require.EqualError(t, Depolorize(target.Interface(), test.wire, DocStructs()), test.err)
-			require.True(t, target.Elem().IsZero())
-
-			// ExtensibleDocStructs accepts it, but the struct encodes into a different document
-			require.NoError(t, Depolorize(test.target, test.wire, ExtensibleDocStructs()))
-			require.Equal(t, test.object, test.target)
-
-			encoded, err := Polorize(test.target, ExtensibleDocStructs())
-			require.NoError(t, err)
-			require.NotEqual(t, test.wire, encoded)
+			require.EqualError(t, Depolorize(test.target, test.wire), test.err)
+			require.True(t, reflect.ValueOf(test.target).Elem().IsZero())
 		})
 	}
 
-	t.Run("ExtensibleDocStructs checks the keys that it reads", func(t *testing.T) {
-		var object Object
+	t.Run("duplicate keys", func(t *testing.T) {
+		const duplicate = "incompatible value error: duplicate document key 'x' for struct polo.keysDuplicate"
 
-		// A Null for a field that cannot be nil, and a value that is not canonical
-		require.ErrorIs(t, Depolorize(&object, Document{"A": Raw{0}}.Bytes(), ExtensibleDocStructs()), ErrNullValue)
-		require.EqualError(t, Depolorize(&object, Document{"A": Raw{3, 0, 5}}.Bytes(), ExtensibleDocStructs()),
-			"incompatible wire: struct field [polo.Object.A <int>]: incompatible wire: leading zero byte in integer")
+		_, err := Polorize(keysDuplicate{1, 2})
+		require.EqualError(t, err, "could not encode into document: "+duplicate)
 
-		// A pack is not a document
-		require.EqualError(t, Depolorize(&object, hexWire(t, "0e2f030000"), ExtensibleDocStructs()),
-			"incompatible wire: unexpected wiretype 'pack'. expected one of: {null, document}")
+		_, err = PolorizeDocument(keysDuplicate{1, 2})
+		require.EqualError(t, err, "could not encode into document: "+duplicate)
+
+		require.EqualError(t, Depolorize(new(keysDuplicate), Document{"x": Raw{3, 1}}.Bytes()), duplicate)
 	})
 
-	t.Run("a string map keeps all keys", func(t *testing.T) {
-		requireRoundtrip(t, Document{"A": Raw{3, 1}, "Z": Raw{3, 2}}.Bytes(),
-			map[string]uint64{"A": 1, "Z": 2}, DocStringMaps(), DocStructs())
+	t.Run("embedded document struct", func(t *testing.T) {
+		// The embedded field is not exported, so it has no key
+		requireRoundtrip(t, Document{"X": Raw{3, 1}}.Bytes(), keysEmbedded{X: 1})
 	})
 }
 
@@ -2088,7 +2144,7 @@ func TestPolorizer_Err(t *testing.T) {
 				require.EqualError(t, err, invalid)
 			}
 
-			_, err = Polorize(struct{ X invalidStringCodec }{codec}, DocStructs())
+			_, err = PolorizeDocument(struct{ X invalidStringCodec }{codec})
 			require.ErrorIs(t, err, ErrInvalidUTF8)
 
 			require.ErrorIs(t, make(Document).Set("k", codec), ErrInvalidUTF8)

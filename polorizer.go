@@ -22,22 +22,15 @@ var (
 // PolorizeString, PolorizeDocument and PolorizePacked have no error result. If one of them gets a
 // value that the decoder rejects, the Polorizer keeps the error: see Err.
 type Polorizer struct {
-	wb  *writebuffer
-	cfg wireConfig
+	wb *writebuffer
 
 	// err is the first error of a method that has no error result (see Err)
 	err error
 }
 
 // NewPolorizer creates a new Polorizer.
-// Accepts EncodingOptions to modify the encoding behaviour of the Polorizer
-func NewPolorizer(options ...EncodingOptions) *Polorizer {
-	// Generate a default wire config
-	config := defaultWireConfig()
-	// Apply any given options to the config
-	config.apply(options...)
-
-	return &Polorizer{wb: &writebuffer{}, cfg: *config}
+func NewPolorizer() *Polorizer {
+	return &Polorizer{wb: &writebuffer{}}
 }
 
 // Err returns the first error of the methods of the Polorizer that have no error result. It is nil if
@@ -105,16 +98,7 @@ func (polorizer *Polorizer) PolorizeNull() {
 
 // PolorizeBytes encodes a bytes value into the Polorizer.
 // Encodes the bytes as is with the wire type being WireWord.
-//
-// If PackedBytes() is used when creating the Polorizer, the
-// bytes is encoded as a WirePack element instead of WireWord.
 func (polorizer *Polorizer) PolorizeBytes(value []byte) {
-	if polorizer.cfg.packBytes {
-		polorizer.polorizeByteAsPack(value)
-
-		return
-	}
-
 	polorizer.wb.write(WireWord, value)
 }
 
@@ -320,7 +304,7 @@ func (polorizer *Polorizer) polorizeDocument(document Document) {
 	// Sort the document keys
 	sort.Strings(keys)
 	// Create a new polorizer for the document elements
-	documentWire := NewPolorizer(inheritCfg(polorizer.cfg))
+	documentWire := NewPolorizer()
 
 	// Serialize each key (string) and value (bytes)
 	for _, key := range keys {
@@ -335,37 +319,21 @@ func (polorizer *Polorizer) polorizeDocument(document Document) {
 	polorizer.wb.write(WireDoc, documentWire.wb.load())
 }
 
-func (polorizer *Polorizer) polorizeStructIntoDoc(value reflect.Value) (Document, error) {
-	t := value.Type()
+// structIntoDoc encodes each field of a struct into a Document. The key of each exported field that is
+// not skipped is the field name or the name in the polo tag. Each value has the form of its own type.
+func structIntoDoc(value reflect.Value) (Document, error) {
+	info := getStructInfo(value.Type())
+
+	// A key that is not valid UTF-8, or two fields with the same key
+	if info.err != nil {
+		return nil, fmt.Errorf("could not encode into document: %w", info.err)
+	}
 
 	// Create a new Document object with enough space for the struct fields
-	doc := make(Document, value.NumField())
+	doc := make(Document, len(info.fields))
 
-	// For each struct field that is exported and not skipped, encode
-	// the value and set it with the field name (or custom field key)
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-
-		// Skip the field if it is not exported or if it
-		// is manually tagged to be skipped with a '-' tag
-		tag := field.Tag.Get("polo")
-		if !field.IsExported() || tag == "-" {
-			continue
-		}
-
-		// Determine doc key for struct field. Field name is used
-		// directly if there is no provided in the polo tag.
-		fieldName := field.Name
-		if tag != "" {
-			fieldName = tag
-		}
-
-		// The document key must be valid UTF-8
-		if !validString(fieldName) {
-			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
-		}
-
-		if err := doc.Set(fieldName, value.Field(i).Interface(), inheritCfg(polorizer.cfg)); err != nil {
+	for _, field := range info.fields {
+		if err := doc.Set(field.key, value.Field(field.index).Interface()); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
 	}
@@ -373,7 +341,7 @@ func (polorizer *Polorizer) polorizeStructIntoDoc(value reflect.Value) (Document
 	return doc, nil
 }
 
-func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document, error) {
+func strMapIntoDoc(value reflect.Value) (Document, error) {
 	// Create a new Document object with enough space for the map elements
 	doc := make(Document, value.Len())
 
@@ -384,7 +352,7 @@ func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document
 			return nil, fmt.Errorf("could not encode into document: %w", invalidUTF8ValueError())
 		}
 
-		if err := doc.Set(k.String(), value.MapIndex(k).Interface(), inheritCfg(polorizer.cfg)); err != nil {
+		if err := doc.Set(k.String(), value.MapIndex(k).Interface()); err != nil {
 			return nil, fmt.Errorf("could not encode into document: %w", err)
 		}
 	}
@@ -419,19 +387,6 @@ func (polorizer *Polorizer) polorizeInner(inner *Polorizer) error {
 	return nil
 }
 
-// polorizeByteAsPack encodes a []byte as WirePack
-func (polorizer *Polorizer) polorizeByteAsPack(bytes []byte) {
-	// Create a polorizer for the byte pack
-	pack := NewPolorizer(inheritCfg(polorizer.cfg))
-	// Write each byte as a WirePosInt
-	for _, elem := range bytes {
-		pack.wb.write(WirePosInt, []byte{elem})
-	}
-
-	// Polorize the whole pack into the buffer
-	polorizer.PolorizePacked(pack)
-}
-
 // polorizeByteArrayValue accepts a reflect.Value and encodes it into the Polorizer.
 // The value must be an array of bytes and is encoded as WireWord.
 func (polorizer *Polorizer) polorizeByteArrayValue(value reflect.Value) {
@@ -448,7 +403,7 @@ func (polorizer *Polorizer) polorizeByteArrayValue(value reflect.Value) {
 // polorizeArrayValue accepts a reflect.Value and encodes it into the Polorizer.
 // The value must be an array or slice and is encoded as element pack encoded data.
 func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
-	array := NewPolorizer(inheritCfg(polorizer.cfg))
+	array := NewPolorizer()
 
 	// Serialize each element into the writebuffer
 	for i := 0; i < value.Len(); i++ {
@@ -463,24 +418,10 @@ func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
 }
 
 // polorizeMapValue accepts a reflect.Value and encodes it into the Polorizer.
-// The value must be a map and is encoded as key-value pack encoded data.
+// The value must be a map and is encoded as key-value pack encoded data, also for a map with string keys.
 // Map keys are sorted before being sequentially encoded.
 // A NaN key is an error. A negative zero key (also in an array key) is written as positive zero.
 func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
-	// Check if the map's key type is string AND the encoding
-	// config expects for string maps to be encoded as documents
-	if polorizer.cfg.docStrMaps && value.Type().Key().Kind() == reflect.String {
-		doc, err := polorizer.polorizeStrMapIntoDoc(value)
-		if err != nil {
-			return err
-		}
-
-		// The keys are already checked
-		polorizer.polorizeDocument(doc)
-
-		return nil
-	}
-
 	// Check that the map keys can be ordered before sorting them.
 	// (sorting keys of an unsupported type would panic)
 	if unorderable := unorderableKeyType(value.Type().Key()); unorderable != nil {
@@ -511,7 +452,7 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 	sort.Slice(keys, ValueSort(keys))
 
 	// Create a new polorizer for the map elements
-	mapping := NewPolorizer(inheritCfg(polorizer.cfg))
+	mapping := NewPolorizer()
 	// Serialize each key and its value into the polorizer
 	for _, k := range keys {
 		// Polorize the key into the buffer
@@ -530,12 +471,16 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 }
 
 // polorizeStructValue accepts a reflect.Value and encodes it into the Polorizer.
-// The value must be a struct and is encoded as field ordered pack encoded data.
+// The value must be a struct. A DocumentStruct is encoded as a document,
+// and any other struct as field ordered pack encoded data.
 func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
-	// Check if the encoder config specifies to encode structs as documents
-	if polorizer.cfg.docStructs {
+	// Get the Type of the value
+	t := value.Type()
+
+	// A DocumentStruct is a document
+	if getStructInfo(t).document {
 		// Encode the struct into a Document
-		doc, err := polorizer.polorizeStructIntoDoc(value)
+		doc, err := structIntoDoc(value)
 		if err != nil {
 			return err
 		}
@@ -546,10 +491,7 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 		return nil
 	}
 
-	// Get the Type of the value
-	t := value.Type()
-
-	structure := NewPolorizer(inheritCfg(polorizer.cfg))
+	structure := NewPolorizer()
 	// Serialize each field into the writebuffer
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
