@@ -15,6 +15,10 @@ import (
 //
 // Returns an error if the object is not a supported type, is a nil pointer
 // or if any of the element/field types cannot be serialized with Polorize()
+//
+// The options apply to the values of the Document. With DocStructs, a struct in a value is a document too,
+// and the bytes of the Document decode into the object with the same option. Without DocStructs, a struct
+// in a value is a pack. Then the bytes decode into a Document, and Get decodes each value.
 func PolorizeDocument(object any, options ...EncodingOptions) (Document, error) {
 	polorizer := NewPolorizer(options...)
 
@@ -55,7 +59,11 @@ func (doc Document) Size() int {
 	return len(doc)
 }
 
-// Bytes returns the POLO wire representation of a Document
+// Bytes returns the POLO wire representation of a Document.
+//
+// Bytes has no error result, so it does not check the keys. The keys must be valid UTF-8, or the
+// decoder rejects the wire (ErrInvalidUTF8). Polorize encodes a Document into the same wire and
+// returns an error for a key that is not valid UTF-8.
 func (doc Document) Bytes() []byte {
 	polorizer := NewPolorizer()
 	polorizer.PolorizeDocument(doc)
@@ -78,7 +86,8 @@ func (doc Document) SetRaw(key string, val Raw) {
 // Get retrieves some object for some given key from a Document.
 // The data for the given key is decoded from its POLO form into the given object which must be a pointer.
 // Returns an error if there is no data for the key or if the data could not be decoded into the given object.
-// Accepts EncodingOptions to modify the decoding behaviour. Give the same options that Set used for the value.
+// Accepts EncodingOptions to modify the decoding behaviour. Give the same options that Set used for the value:
+// the options are switches, so the decoder rejects a value that was encoded with other options.
 func (doc Document) Get(key string, object any, options ...EncodingOptions) error {
 	// Retrieve the data for the key and error if unavailable
 	var data []byte

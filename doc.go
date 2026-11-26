@@ -54,8 +54,9 @@
 //
 // The encoder applies the same rule. Polorize returns an error that matches ErrInvalidUTF8 for a string,
 // a string map key or a Document key that is not valid UTF-8. Polorizer.PolorizeString and
-// Polorizer.PolorizeDocument do not return errors and do not check: the caller must pass valid UTF-8,
-// or the result does not decode as a string.
+// Polorizer.PolorizeDocument have no error result. They write the value, and the Polorizer keeps the
+// error (see Polorizer.Err). Polorize returns this error for a type whose custom Polorize method wrote
+// the value. Document.Bytes has no error result and does not check the keys.
 //
 // A field that can hold any bytes must be a []byte. Changing a field from string to []byte does not
 // change the wire, so it is also the migration path for data written with an earlier version.
@@ -80,18 +81,37 @@
 //   - Map keys are in strictly ascending order (the order of ValueSort, without duplicates) and are
 //     not NaN. Like the encoder, the decoder only accepts the map key types that it can order:
 //     booleans, strings, integers, floats and arrays of those. The encoder rejects a map with a NaN key.
+//   - A float map key is not negative zero. Negative zero and positive zero are equal, so they are the
+//     same key of a Go map. The encoder writes that key as positive zero, also in an array key, and
+//     the decoder rejects a negative zero key. A negative zero that is not a map key keeps its bits.
 //   - Document keys are in strictly ascending order and every Document value is a WireRaw.
 //   - Bytes in a pack (the PackedBytes option) are WirePosInt elements with exactly one byte each,
 //     zero included, because that is how the encoder writes them.
 //
-// The options DocStructs, DocStringMaps and PackedBytes accept two forms by design: a struct or a string
-// map as a pack or as a document, and bytes as a word or as a pack. Documents are the extensible format:
-// when a struct is decoded from a document (DocStructs), the decoder ignores unknown keys and leaves the
-// fields of absent keys at their zero values. Any and Raw
-// hold encoded data as is: the decoder only checks the tag of an Any, not its content, and the encoder
-// (PolorizeAny) applies the same checks, so it cannot write an Any that the decoder rejects. A Null decodes to
-// a nil Raw, and Polorize writes a nil Raw as a Null. Polorizer.PolorizeRaw writes a nil Raw as Raw{0}
-// (a WireRaw that holds a Null), which is a different wire.
+// The options PackedBytes, DocStructs and DocStringMaps are switches. With an option, the encoder writes
+// only the other form of a type (bytes as a pack, a struct or a string map as a document), and the decoder
+// accepts only that form. Thus, the rule above is true for each set of options, and the decoder must have
+// the options of the encoder. A struct that is decoded from a document (DocStructs) must have exactly one
+// key for each encoded field: an absent key and an unknown key are errors.
+//
+// The canonical rule stops in these cases:
+//
+//   - Any and Raw hold encoded data as is. The decoder checks only the tag of an Any: the tag is canonical,
+//     the wire type is not reserved and not WireLoad, and a WireNull, WireFalse or WireTrue has no data.
+//     The encoder (PolorizeAny) applies the same checks, so it cannot write an Any that the decoder rejects.
+//     The data after the tag is not examined, because its rules depend on the target type: 03 00 is a byte
+//     in a pack (PackedBytes) but not an integer, and 06 ff is bytes but not a string. Thus, an Any accepts
+//     03 05 and 03 00 05. The content of a Raw is not examined at all. The canonical rules apply when the
+//     data is decoded into a typed target. A Null decodes to a nil Raw, and Polorize writes a nil Raw as
+//     a Null. Polorizer.PolorizeRaw writes a nil Raw as Raw{0} (a WireRaw that holds a Null), which is
+//     a different wire.
+//   - ExtensibleDocStructs. With this option, the decoder ignores unknown keys in the document of a struct
+//     and leaves the fields of absent keys at their zero values. Use it only for data that must be
+//     extensible, and not for a wire that is hashed or signed.
+//   - Custom codecs. The author of a Polorize and Depolorize method must make sure that the type has one
+//     wire. The decoder checks one part of this: it returns an error if a custom Depolorize method does not
+//     read all the data of its element (see Depolorizable). The options that select a wire form do not
+//     reach a custom codec: its Polorizer and its Depolorizer have the default forms.
 //
 // The encoder has no nesting limit. It can write a wire with more levels than the decoder accepts
 // (DefaultMaxDepth, or the value of MaxDepth), and the decoder rejects that wire with ErrMaxDepthExceeded.

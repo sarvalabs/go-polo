@@ -604,17 +604,21 @@ func TestDepolorizer_depolorizeInner(t *testing.T) {
 		depolorizer, err = depolorizer.DepolorizePacked()
 		require.Nil(t, err)
 
-		// The inner Depolorizer inherits the configuration (and nesting depth) of its parent
+		// The inner Depolorizer inherits the nesting limit and the nesting depth of
+		// its parent, and it tracks the packs that are unpacked from it
 		inner, err := depolorizer.depolorizeInner()
 		assert.Nil(t, err)
 
 		expected := &Depolorizer{data: readbuffer{WireNull, []byte{}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		expected.track = &expected.open
 		assert.Equal(t, expected, inner)
+		assert.Same(t, &inner.open, inner.track)
 
 		inner, err = depolorizer.depolorizeInner()
 		assert.Nil(t, err)
 
 		expected = &Depolorizer{data: readbuffer{WirePosInt, []byte{5}}, cfg: depolorizer.cfg, depth: depolorizer.depth}
+		expected.track = &expected.open
 		assert.Equal(t, expected, inner)
 
 		_, err = depolorizer.depolorizeInner()

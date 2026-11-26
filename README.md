@@ -51,6 +51,8 @@ POLO describes two buffers, `Polorizer` and `Depolorizer` which are write-only a
 
 **Note**: This capability can be dangerous if not implemented correctly, it generally recommended that both interfaces be implemented and are evenly capable of encoding/decoding the same contents to avoid inconsistency. It is intended to be used for object such as Go Interfaces which are not supported by default when using the reflection based `Polorize` and `Depolorize` functions.
 
+A custom `Depolorize` method must read all the data of its element. The decoder returns an error if the method leaves the element unread (a Null is the only exception), or if it does not read all the elements of a pack that it unpacked. If you call a `Depolorize` method yourself, check `Done()`. The options `PackedBytes`, `DocStructs` and `DocStringMaps` do not reach a custom codec: its `Polorizer` and its `Depolorizer` have the default forms.
+
 ### Differential Messaging (Coming Soon)
 POLO's partially encoding and field order based indexing (and string based indexing for document encoded wires) allows the possibility for messaging that only allows the transmission of the difference between two states, this is useful for any version managment system where the same data is incrementally updated and transmitted, the ability to index the difference and only transmit the difference can result in massive reduction in the wire sizes for these use cases that often re-transmit already available information.
 
@@ -81,12 +83,14 @@ The wire is the same for strings and bytes. A POLO string is always valid UTF-8;
 | `eda080`, `edbfbf` (surrogates) | no | error | accepted |
 | `f4908080` (above U+10FFFF), `f5808080`, `f888808080` (5-byte form) | no | error | accepted |
 
-The encoder applies the same rule: `Polorize` returns an error that matches `polo.ErrInvalidUTF8` for a string, a string map key or a `Document` key that is not valid UTF-8. `Polorizer.PolorizeString` does not check: the caller must pass valid UTF-8, or the result does not decode as a string.
+The encoder applies the same rule: `Polorize` returns an error that matches `polo.ErrInvalidUTF8` for a string, a string map key or a `Document` key that is not valid UTF-8.
+
+`Polorizer.PolorizeString` and `Polorizer.PolorizeDocument` have no error result. They write the value, and the `Polorizer` keeps the error. `Polorizer.Err()` returns it, and `Polorize` returns it for a type whose custom `Polorize` method wrote the value. If you use a `Polorizer` directly, check `Err()` before you use `Bytes()`. `Document.Bytes()` does not check the keys: use `Polorize(document)` for a check.
 
 A field that can hold any bytes must be a `[]byte`. Changing a field from `string` to `[]byte` does not change the wire.
 
 ## Canonical Decoding
-Up to the nesting limit, the decoder accepts exactly the bytes that the encoder produces, so `Polorize(Depolorize(wire)) == wire` for every wire that decodes with the default options:
+Up to the nesting limit, the decoder accepts exactly the bytes that the encoder produces, so `Polorize(Depolorize(wire)) == wire` for every wire that decodes, when the encoder and the decoder have the same options:
 
 - Tag varints are minimally encoded, and the offset of a top-level tag is zero.
 - Integers have no leading zero byte, zero is an empty `WirePosInt` and negative zero is an error. The value must fit the target type (`int8` accepts -128 to 127). `math.MinInt64` decodes.
@@ -94,8 +98,27 @@ Up to the nesting limit, the decoder accepts exactly the bytes that the encoder 
 - A `[N]byte` needs exactly N bytes, a `[N]T` exactly N elements, and a float exactly 4 or 8 bytes. NaN decodes and keeps its bits.
 - In a pack, the first element starts at offset zero. A struct pack has exactly one element for every exported field that is not skipped.
 - Map keys and document keys are in strictly ascending order, without duplicates. NaN map keys are rejected on encode and decode.
+- A float map key is not `-0`. `-0` and `+0` are the same key of a Go map, so the encoder writes that key as `+0` (also in an array key) and the decoder rejects a `-0` key. A `-0` that is not a map key keeps its bits.
 
-The options `DocStructs`, `DocStringMaps` and `PackedBytes` accept two forms by design (a pack or a document, a word or a pack). Documents are the extensible format: a struct decoded from a document (`DocStructs`) ignores unknown keys and leaves absent fields at their zero values.
+### Options
+The options `PackedBytes`, `DocStructs` and `DocStringMaps` are switches. With an option, the encoder writes only the other form and the decoder accepts only that form. Thus, each value has one wire for each set of options, and the decoder must have the options of the encoder.
+
+| Option | Type | Without the option | With the option |
+|---|---|---|---|
+| `PackedBytes` | `[]byte`, `[N]byte` | Word | Pack of 8-bit integers |
+| `DocStructs` | struct | Pack | Document |
+| `DocStringMaps` | map with string keys | Pack | Document |
+
+A struct that is decoded from a document must have exactly one key for each encoded field. An absent key and an unknown key are errors.
+
+`ExtensibleDocStructs` is `DocStructs` with an extensible decoder: the decoder ignores unknown keys and leaves the fields of absent keys at their zero values. A decode with this option is not canonical, because different documents decode into the same struct. Do not use it for a wire that you hash or sign.
+
+`PolorizeDocument(object)` encodes only the object as a document. A struct in a field is a pack, unless you give `DocStructs`. Thus, decode its bytes into the struct with `DocStructs` only if you gave `DocStructs` to `PolorizeDocument`. Without it, decode the bytes into a `Document` and use `Get` for each value.
+
+### Where the canonical rule stops
+- `Any` and `Raw` hold encoded data as is. For an `Any`, the decoder and the encoder check only the tag: it is canonical, the wire type is not reserved and not Load, and a Null, False or True has no data. They do not examine the data after the tag, because its rules depend on the target type. Thus, an `Any` accepts `03 05` and also `03 00 05`. The content of a `Raw` is not examined at all. The canonical rules apply when you decode the data into a typed target.
+- `ExtensibleDocStructs` (see above).
+- Custom codecs. The author of a `Polorize` and a `Depolorize` method must make sure that the type has one wire. The decoder checks only that the `Depolorize` method reads all the data of its element.
 
 The encoder has no nesting limit. It can write a wire with more levels than the decoder accepts (`DefaultMaxDepth`, or the value of `MaxDepth`), and the decoder rejects that wire with `ErrMaxDepthExceeded`.
 

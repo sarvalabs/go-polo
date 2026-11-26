@@ -108,6 +108,19 @@ func (rb *readbuffer) unpack() (*packbuffer, error) {
 	return newpackbuffer(rest[:headlen], rest[headlen:])
 }
 
+// checkAny returns an error if the readbuffer is not an element that an Any can hold.
+// An Any holds an element that some target type can decode: the reserved wire types and
+// WireLoad are errors, and a WireNull, WireFalse or WireTrue has no data (C4). The data of
+// the other wire types is not examined, because its rules depend on the target type.
+// The decoder and the encoder of an Any both apply this check.
+func (rb readbuffer) checkAny() error {
+	if !rb.wire.IsValid() || rb.wire == WireLoad {
+		return IncompatibleWireError{msg: fmt.Sprintf("unexpected wiretype '%v' for an undecoded element", rb.wire)}
+	}
+
+	return rb.checkEmpty()
+}
+
 // asAny returns the readbuffer as an Any. A WireNull is a nil Any.
 func (rb readbuffer) asAny() Any {
 	if rb.wire == WireNull {
@@ -141,29 +154,28 @@ func (rb readbuffer) decodeBool() (bool, error) {
 	}
 }
 
-// decodeBytes decodes a byte slice from a WireWord (any data is accepted) or, if allowPack
-// is set (PackedBytes option), from a WirePack of 8-bit integers. A WireNull is a nil slice.
-func (rb readbuffer) decodeBytes(allowPack bool) ([]byte, error) {
+// decodeBytes decodes a byte slice from the form that the encoder writes: a WireWord (any data is
+// accepted) or, if packed is set (PackedBytes option), a WirePack of 8-bit integers. The other form
+// is an error, so that bytes have one wire for each configuration. A WireNull is a nil slice.
+func (rb readbuffer) decodeBytes(packed bool) ([]byte, error) {
 	switch {
-	case rb.wire == WireWord:
-		return rb.data, nil
-
-	// Packed Bytes Value ([]uint8). Only with the PackedBytes option, which
-	// is the only configuration in which the encoder produces such a wire
-	case rb.wire == WirePack && allowPack:
-		return rb.decodePackedBytes()
-
 	// Nil Byte Slice
 	case rb.wire == WireNull:
 		return nil, nil
-	}
 
-	allowed := []WireType{WireNull, WireWord}
-	if allowPack {
-		allowed = append(allowed, WirePack)
-	}
+	case rb.wire == WireWord && !packed:
+		return rb.data, nil
 
-	return nil, IncompatibleWireType(rb.wire, allowed...)
+	// Packed Bytes Value ([]uint8)
+	case rb.wire == WirePack && packed:
+		return rb.decodePackedBytes()
+
+	case packed:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WirePack)
+
+	default:
+		return nil, IncompatibleWireType(rb.wire, WireNull, WireWord)
+	}
 }
 
 // decodePackedBytes decodes a byte slice from a WirePack of 8-bit integers. The encoder writes every byte
@@ -204,12 +216,12 @@ func (rb readbuffer) decodePackedBytes() ([]byte, error) {
 
 // decodeByteArray decodes the bytes for a byte array of the given length. An array
 // cannot be nil, so a WireNull is an error, and the data must have exactly the length (C5).
-func (rb readbuffer) decodeByteArray(length int, allowPack bool) ([]byte, error) {
+func (rb readbuffer) decodeByteArray(length int, packed bool) ([]byte, error) {
 	if rb.wire == WireNull {
 		return nil, nullValueError()
 	}
 
-	data, err := rb.decodeBytes(allowPack)
+	data, err := rb.decodeBytes(packed)
 	if err != nil {
 		return nil, err
 	}
@@ -222,12 +234,12 @@ func (rb readbuffer) decodeByteArray(length int, allowPack bool) ([]byte, error)
 }
 
 // decodeBytes32 decodes a 32-byte array. A WireNull is an error and the data must have exactly 32 bytes.
-func (rb readbuffer) decodeBytes32(allowPack bool) ([32]byte, error) {
+func (rb readbuffer) decodeBytes32(packed bool) ([32]byte, error) {
 	if rb.wire == WireNull {
 		return [32]byte{}, nullValueError()
 	}
 
-	value, err := rb.decodeBytes(allowPack)
+	value, err := rb.decodeBytes(packed)
 	if err != nil {
 		return [32]byte{}, err
 	}

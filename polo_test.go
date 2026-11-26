@@ -1364,7 +1364,7 @@ func TestIncompatibleWireType(t *testing.T) {
 			[]byte{3, 76},
 			new([]byte),
 			[]EncodingOptions{PackedBytes()},
-			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, word, pack}"},
+			IncompatibleWireError{msg: "unexpected wiretype 'posint'. expected one of: {null, pack}"},
 		},
 		{
 			"string map from document with DocStringMaps disabled",

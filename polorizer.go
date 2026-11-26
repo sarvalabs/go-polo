@@ -18,9 +18,15 @@ var (
 
 // Polorizer is an encoding buffer that can sequentially polorize objects into it.
 // It can be collapsed into its bytes with Bytes() or Packed().
+//
+// PolorizeString, PolorizeDocument and PolorizePacked have no error result. If one of them gets a
+// value that the decoder rejects, the Polorizer keeps the error: see Err.
 type Polorizer struct {
 	wb  *writebuffer
 	cfg wireConfig
+
+	// err is the first error of a method that has no error result (see Err)
+	err error
 }
 
 // NewPolorizer creates a new Polorizer.
@@ -34,10 +40,30 @@ func NewPolorizer(options ...EncodingOptions) *Polorizer {
 	return &Polorizer{wb: &writebuffer{}, cfg: *config}
 }
 
+// Err returns the first error of the methods of the Polorizer that have no error result. It is nil if
+// there is none. PolorizeString and PolorizeDocument set it for a string or a Document key that is not
+// valid UTF-8 (the error matches ErrInvalidUTF8). PolorizePacked sets it to the error of the given Polorizer.
+//
+// The decoder rejects the wire of a Polorizer that has an error. Polorize returns this error for
+// a type whose custom Polorize method returns such a Polorizer. Code that uses a Polorizer directly
+// must check Err before it uses Bytes or Packed.
+func (polorizer *Polorizer) Err() error {
+	return polorizer.err
+}
+
+// fail keeps err as the error of the Polorizer if it does not have one
+func (polorizer *Polorizer) fail(err error) {
+	if polorizer.err == nil {
+		polorizer.err = err
+	}
+}
+
 // Bytes returns the contents of the Polorizer as bytes.
 //   - If no objects were polorized, it returns a WireNull wire
 //   - If only one object was polorized, it returns the contents directly
 //   - If more than one object was polorized, it returns the contents in a packed wire.
+//
+// Bytes does not report the error of the Polorizer. See Err.
 func (polorizer Polorizer) Bytes() []byte {
 	switch polorizer.wb.counter {
 	case 0:
@@ -50,6 +76,7 @@ func (polorizer Polorizer) Bytes() []byte {
 }
 
 // Packed returns the contents of the Polorizer as bytes after packing it and tagging with WirePack.
+// Packed does not report the error of the Polorizer. See Err.
 func (polorizer Polorizer) Packed() []byte {
 	// Declare a new writebuffer
 	var wb writebuffer
@@ -64,6 +91,8 @@ func (polorizer Polorizer) Packed() []byte {
 // Encodes the object based on its type using the Go reflection.
 // Returns an error that matches ErrInvalidUTF8 if a string, a string map key or
 // a Document key is not valid UTF-8, and an error for a map with a NaN key.
+// Returns the error of a custom Polorize method, or of the Polorizer that it returns (see Err).
+// If Polorize returns an error, it writes nothing, and the Polorizer does not keep the error.
 func (polorizer *Polorizer) Polorize(value any) error {
 	return polorizer.polorizeValue(reflect.ValueOf(value))
 }
@@ -92,10 +121,15 @@ func (polorizer *Polorizer) PolorizeBytes(value []byte) {
 // PolorizeString encodes a string value into the Polorizer.
 // Encodes the string as its UTF-8 encoded bytes with the wire type being WireWord.
 //
-// The string must be valid UTF-8 (see utf8.ValidString). PolorizeString does not check it,
-// but the decoder rejects a string that is not valid UTF-8 (ErrInvalidUTF8). Use PolorizeBytes
-// for data that can hold any bytes: the wire is the same and the decoder accepts any bytes for it.
+// The string must be valid UTF-8 (see utf8.ValidString), because the decoder rejects a string that is not.
+// If it is not valid UTF-8, PolorizeString still writes it, and the Polorizer keeps an error that matches
+// ErrInvalidUTF8 (see Err). Use PolorizeBytes for data that can hold any bytes: the wire is the same and
+// the decoder accepts any bytes for it.
 func (polorizer *Polorizer) PolorizeString(value string) {
+	if !validString(value) {
+		polorizer.fail(invalidUTF8ValueError())
+	}
+
 	polorizer.wb.write(WireWord, []byte(value))
 }
 
@@ -197,8 +231,9 @@ func (polorizer *Polorizer) PolorizeRaw(value Raw) {
 // A nil Any is encoded as WireNull.
 //
 // Returns an error if the Any is not an element that the decoder of an Any accepts: the tag must be
-// minimal with an offset of zero, and a WireNull, WireFalse or WireTrue must have no data.
-// The data of other wire types is not examined.
+// minimal with an offset of zero, the wire type must not be reserved or WireLoad, and a WireNull,
+// WireFalse or WireTrue must have no data.
+// The data of other wire types is not examined, so the canonical rules do not apply to it here.
 // USE WITH CAUTION: Encoding unsupported wire formats, will lead to serialization failures
 func (polorizer *Polorizer) PolorizeAny(value Any) error {
 	// If raw value is nil, encode WireNull
@@ -215,8 +250,9 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 		return err
 	}
 
-	// Null, False and True carry no data (C4)
-	if err = rb.checkEmpty(); err != nil {
+	// The element must be one that an Any can hold: no reserved wire type and no
+	// WireLoad, and Null, False and True carry no data (C4)
+	if err = rb.checkAny(); err != nil {
 		return err
 	}
 
@@ -228,12 +264,18 @@ func (polorizer *Polorizer) PolorizeAny(value Any) error {
 // PolorizePacked encodes the contents of another Polorizer as pack-encoded data.
 // The contents are packed into a WireLoad message and tagged with the WirePack wire type.
 // If the given Polorizer is nil, a WireNull is encoded instead.
+// If the given Polorizer has an error, the Polorizer keeps it (see Err).
 func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 	// If pack is nil, encode WireNull
 	if pack == nil {
 		polorizer.PolorizeNull()
 
 		return
+	}
+
+	// Keep the error of the pack
+	if pack.err != nil {
+		polorizer.fail(pack.err)
 	}
 
 	// Encode pack load contents as a WirePack
@@ -244,9 +286,24 @@ func (polorizer *Polorizer) PolorizePacked(pack *Polorizer) {
 // Encodes the Document keys and raw values as POLO doc-encoded data with the wire type being WireDoc.
 // If the Document is nil, it is encoded as a WireNull.
 //
-// The keys must be valid UTF-8. PolorizeDocument does not check them, but the decoder rejects
-// a key that is not valid UTF-8 (ErrInvalidUTF8). The reflective Polorize checks them.
+// The keys must be valid UTF-8, because the decoder rejects a key that is not. If a key is not valid
+// UTF-8, PolorizeDocument still writes the Document, and the Polorizer keeps an error that matches
+// ErrInvalidUTF8 (see Err).
 func (polorizer *Polorizer) PolorizeDocument(document Document) {
+	for key := range document {
+		if !validString(key) {
+			polorizer.fail(invalidUTF8ValueError())
+
+			break
+		}
+	}
+
+	polorizer.polorizeDocument(document)
+}
+
+// polorizeDocument encodes a Document into the Polorizer without a check of its keys.
+// The caller must make sure that the keys are valid UTF-8.
+func (polorizer *Polorizer) polorizeDocument(document Document) {
 	// Nil Document
 	if document == nil {
 		polorizer.PolorizeNull()
@@ -268,7 +325,7 @@ func (polorizer *Polorizer) PolorizeDocument(document Document) {
 	// Serialize each key (string) and value (bytes)
 	for _, key := range keys {
 		// Write the document key
-		documentWire.PolorizeString(key)
+		documentWire.wb.write(WireWord, []byte(key))
 		// Write the document value
 		documentWire.PolorizeRaw(document[key])
 	}
@@ -338,12 +395,18 @@ func (polorizer *Polorizer) polorizeStrMapIntoDoc(value reflect.Value) (Document
 // polorizeInner encodes another Polorizer directly into the Polorizer.
 // Unlike PolorizePacked which will always write it as a packed wire while polorizeInner will write an atomic as is.
 // If the given Polorizer is nil, a WireNull is encoded.
-func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
+// Returns the error of the given Polorizer (see Err) and writes nothing if it has one.
+func (polorizer *Polorizer) polorizeInner(inner *Polorizer) error {
 	// If inner is nil, encode a WireNull
 	if inner == nil {
 		polorizer.PolorizeNull()
 
-		return
+		return nil
+	}
+
+	// The inner polorizer holds a value that the decoder rejects
+	if inner.err != nil {
+		return inner.err
 	}
 
 	// Collapse the inner polorizer into its bytes
@@ -352,6 +415,8 @@ func (polorizer *Polorizer) polorizeInner(inner *Polorizer) {
 
 	// Write the read buffer contents
 	polorizer.wb.write(buffer.wire, buffer.data)
+
+	return nil
 }
 
 // polorizeByteAsPack encodes a []byte as WirePack
@@ -400,6 +465,7 @@ func (polorizer *Polorizer) polorizeArrayValue(value reflect.Value) error {
 // polorizeMapValue accepts a reflect.Value and encodes it into the Polorizer.
 // The value must be a map and is encoded as key-value pack encoded data.
 // Map keys are sorted before being sequentially encoded.
+// A NaN key is an error. A negative zero key (also in an array key) is written as positive zero.
 func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 	// Check if the map's key type is string AND the encoding
 	// config expects for string maps to be encoded as documents
@@ -409,7 +475,8 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 			return err
 		}
 
-		polorizer.PolorizeDocument(doc)
+		// The keys are already checked
+		polorizer.polorizeDocument(doc)
 
 		return nil
 	}
@@ -420,12 +487,23 @@ func (polorizer *Polorizer) polorizeMapValue(value reflect.Value) error {
 		return UnsupportedTypeError(unorderable)
 	}
 
-	// Collect the map keys. A NaN key has no order (and a map can hold several of
-	// them), so a map with a NaN key has no canonical encoding and is rejected
+	// Collect the map keys
 	keys := value.MapKeys()
-	for _, key := range keys {
-		if hasNaN(key) {
-			return IncompatibleValueError{msg: "unsupported map key: NaN"}
+
+	// Float keys (and array keys that hold floats) have two special values
+	if mayHoldNaN(value.Type().Key()) {
+		for i, key := range keys {
+			// A NaN key has no order (and a map can hold several of them),
+			// so a map with a NaN key has no canonical encoding and is rejected
+			if hasNaN(key) {
+				return IncompatibleValueError{msg: "unsupported map key: NaN"}
+			}
+
+			// Negative zero and positive zero are the same key, so the key is written as positive zero.
+			// The positive zero key is equal to the key of the map, so it finds the same entry
+			if hasNegZero(key) {
+				keys[i] = withoutNegZero(key)
+			}
 		}
 	}
 
@@ -462,8 +540,8 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 			return err
 		}
 
-		// Flatten the document into the encoding buffer
-		polorizer.PolorizeDocument(doc)
+		// Flatten the document into the encoding buffer (the keys are already checked)
+		polorizer.polorizeDocument(doc)
 
 		return nil
 	}
@@ -493,7 +571,8 @@ func (polorizer *Polorizer) polorizeStructValue(value reflect.Value) error {
 }
 
 // polorizePolorizable accepts a reflect.Value and encodes it into the Polorizer.
-// The value must implement the Polorizable interface.
+// The value must implement the Polorizable interface. Returns the error of the Polorize
+// method, or the error of the Polorizer that the method returns (see Polorizer.Err).
 func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 	// Call the Polorize method of Polorizable (returns a Polorizer and an error)
 	outputs := value.MethodByName("Polorize").Call([]reflect.Value{})
@@ -503,9 +582,8 @@ func (polorizer *Polorizer) polorizePolorizable(value reflect.Value) error {
 
 	// Polorize the inner polorizer
 	inner, _ := outputs[0].Interface().(*Polorizer)
-	polorizer.polorizeInner(inner)
 
-	return nil
+	return polorizer.polorizeInner(inner)
 }
 
 // polorizeValue accepts a reflect.Value and encodes it into the Polorizer.
@@ -555,11 +633,12 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 
 	// String (must be valid UTF-8)
 	case reflect.String:
-		if !validString(value.String()) {
+		str := value.String()
+		if !validString(str) {
 			return invalidUTF8ValueError()
 		}
 
-		polorizer.PolorizeString(value.String())
+		polorizer.wb.write(WireWord, []byte(str))
 
 	// Unsigned Integer
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -636,7 +715,7 @@ func (polorizer *Polorizer) polorizeValue(value reflect.Value) (err error) {
 				}
 			}
 
-			polorizer.PolorizeDocument(document)
+			polorizer.polorizeDocument(document)
 
 			return nil
 		}

@@ -186,7 +186,7 @@ func hasNaN(value reflect.Value) bool {
 	return false
 }
 
-// mayHoldNaN returns whether a value of the given type can be or hold a NaN:
+// mayHoldNaN returns whether a value of the given type can be or hold a NaN or a negative zero:
 // a float or an array of floats (recursively).
 func mayHoldNaN(t reflect.Type) bool {
 	for t.Kind() == reflect.Array {
@@ -194,6 +194,57 @@ func mayHoldNaN(t reflect.Type) bool {
 	}
 
 	return t.Kind() == reflect.Float32 || t.Kind() == reflect.Float64
+}
+
+// hasNegZero returns whether a map key value is a negative zero float or an array that contains one (recursively).
+// Negative zero and positive zero are equal, so they are the same map key. The canonical form of that key is
+// positive zero: the encoder writes a negative zero key as positive zero and the decoder rejects a negative zero key.
+func hasNegZero(value reflect.Value) bool {
+	switch value.Kind() {
+	case reflect.Float32, reflect.Float64:
+		float := value.Float()
+
+		return float == 0 && math.Signbit(float)
+
+	case reflect.Array:
+		// Only an array of floats (or of arrays of floats) can hold a negative zero
+		if !mayHoldNaN(value.Type()) {
+			return false
+		}
+
+		for i := range value.Len() {
+			if hasNegZero(value.Index(i)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// withoutNegZero returns a copy of a map key value in which every negative zero float is a positive zero.
+// The copy is equal to the value, so it finds the same entry in the map.
+func withoutNegZero(value reflect.Value) reflect.Value {
+	clone := reflect.New(value.Type()).Elem()
+	clone.Set(value)
+	clearNegZero(clone)
+
+	return clone
+}
+
+// clearNegZero sets every negative zero float in a settable float or array of floats (recursively) to positive zero
+func clearNegZero(value reflect.Value) {
+	switch value.Kind() {
+	case reflect.Float32, reflect.Float64:
+		if value.Float() == 0 {
+			value.SetFloat(0)
+		}
+
+	case reflect.Array:
+		for i := range value.Len() {
+			clearNegZero(value.Index(i))
+		}
+	}
 }
 
 // Key is an indexed reflect value. Preserves the original index of key.

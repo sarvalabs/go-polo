@@ -23,7 +23,7 @@ var (
 
 	// ErrNullValue is matched (with errors.Is) by the error for a WireNull that is decoded into a value
 	// that cannot be nil: booleans, integers, floats, strings, arrays and structs (big.Int included).
-	// A WireNull decodes to nil for pointers, slices, maps, interfaces, Document, Any and Raw.
+	// A WireNull decodes to nil for pointers, slices, maps, Document, Any and Raw.
 	// The error is an IncompatibleWireError and is the same at every nesting level.
 	ErrNullValue = errors.New("nil value")
 

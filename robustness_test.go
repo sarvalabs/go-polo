@@ -438,36 +438,115 @@ func TestDepolorize_MaxDepth(t *testing.T) {
 	})
 }
 
-func TestDepolorize_DepolorizableInheritsOptions(t *testing.T) {
-	// The Depolorizer handed to a custom Depolorizable inherits the options of its parent
+// TestDepolorize_DepolorizableDefaultForms checks that the options that select a wire form stop at a type
+// with a custom codec, on encode and on decode. A custom Polorize method does not receive the options of
+// the caller, so it writes the default forms. Thus, the Depolorizer of a custom Depolorize method has the
+// default forms too (v0.4.10 gave it the options of the caller, which then accepted two forms).
+func TestDepolorize_DepolorizableDefaultForms(t *testing.T) {
+	type Outer struct {
+		In optionsCodec
+		S  struct{ A uint64 }
+		B  []byte
+		M  map[string]uint64
+	}
+
+	object := Outer{
+		In: optionsCodec{A: 7, B: []byte{1, 2}, M: map[string]uint64{"k": 3}},
+		S:  struct{ A uint64 }{8},
+		B:  []byte{3},
+		M:  map[string]uint64{"k": 4},
+	}
+
+	// The wire of the custom type is the same with all options
+	plain, err := Polorize(object.In)
+	require.NoError(t, err)
+	// A pack with the struct as a pack (1f0307), the bytes as a word (0102) and the map as a pack (2f06136b03)
+	require.Equal(t, hexWire(t, "0e3f0e365e"+"1f0307"+"0102"+"2f06136b03"), plain)
+
+	for name, options := range map[string][]EncodingOptions{
+		"no options":    {},
+		"DocStructs":    {DocStructs()},
+		"PackedBytes":   {PackedBytes()},
+		"DocStringMaps": {DocStringMaps()},
+		"all options":   {DocStructs(), PackedBytes(), DocStringMaps()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			custom, err := Polorize(object.In, options...)
+			require.NoError(t, err)
+			require.Equal(t, plain, custom)
+
+			// The options apply to the fields around the custom type, and the object makes a round trip
+			wire, err := Polorize(object, options...)
+			require.NoError(t, err)
+			requireRoundtrip(t, wire, object, options...)
+		})
+	}
+
+	// The custom decoder rejects the other forms, also when the caller has the option
 	type Inner struct{ A uint64 }
 
-	wire, err := Polorize(Inner{7}, DocStructs())
+	document, err := Polorize(Inner{7}, DocStructs())
 	require.NoError(t, err)
 
-	// Wrap the document encoded struct as the only field of an outer struct
-	polorizer := NewPolorizer()
-	require.NoError(t, polorizer.PolorizeAny(wire))
+	wire := packWire(func(p *Polorizer) {
+		require.NoError(t, p.PolorizeAny(document))
+		p.PolorizeBytes([]byte{1, 2})
+		require.NoError(t, p.Polorize(map[string]uint64{"k": 3}))
+	})
 
-	var object struct{ In optionsDepolorizable }
+	var target optionsCodec
 
-	require.NoError(t, Depolorize(&object, polorizer.Packed(), DocStructs()))
-	assert.Equal(t, uint64(7), object.In.A)
+	require.EqualError(t, Depolorize(&target, wire, DocStructs()),
+		"incompatible wire: unexpected wiretype 'document'. expected one of: {null, pack}")
+
+	// The nesting limit is not a form, so the custom decoder inherits it
+	require.ErrorIs(t, Depolorize(&target, plain, MaxDepth(1)), ErrMaxDepthExceeded)
+	require.NoError(t, Depolorize(&target, plain, MaxDepth(2)))
 }
 
-// optionsDepolorizable is a custom Depolorizable that decodes a document encoded struct
-type optionsDepolorizable struct{ A uint64 }
+// optionsCodec is a type with a custom codec that encodes and decodes a struct, bytes and a string
+// map with the reflective methods of its Polorizer and Depolorizer
+type optionsCodec struct {
+	A uint64
+	B []byte
+	M map[string]uint64
+}
 
-func (o *optionsDepolorizable) Depolorize(depolorizer *Depolorizer) error {
+func (o optionsCodec) Polorize() (*Polorizer, error) {
+	polorizer := NewPolorizer()
+
+	if err := polorizer.Polorize(struct{ A uint64 }{o.A}); err != nil {
+		return nil, err
+	}
+
+	polorizer.PolorizeBytes(o.B)
+
+	if err := polorizer.Polorize(o.M); err != nil {
+		return nil, err
+	}
+
+	return polorizer, nil
+}
+
+func (o *optionsCodec) Depolorize(depolorizer *Depolorizer) error {
+	pack, err := depolorizer.DepolorizePacked()
+	if err != nil {
+		return err
+	}
+
 	var inner struct{ A uint64 }
 
-	if err := depolorizer.Depolorize(&inner); err != nil {
+	if err = pack.Depolorize(&inner); err != nil {
 		return err
 	}
 
 	o.A = inner.A
 
-	return nil
+	if o.B, err = pack.DepolorizeBytes(); err != nil {
+		return err
+	}
+
+	return pack.Depolorize(&o.M)
 }
 
 func TestDepolorize_NestedStructFieldError(t *testing.T) {
