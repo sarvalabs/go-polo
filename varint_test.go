@@ -123,3 +123,82 @@ func TestConsumeVarint(t *testing.T) {
 		})
 	}
 }
+
+func TestConsumeTag(t *testing.T) {
+	// reference is the rule for a tag: consumeVarint, and the varint must be minimally encoded
+	reference := func(input []byte) (uint64, int, error) {
+		x, n, err := consumeVarint(bytes.NewReader(input))
+		if err == nil && n != sizeVarint(x) {
+			return x, n, errVarintNotMinimal
+		}
+
+		return x, n, err
+	}
+
+	check := func(t *testing.T, input []byte) {
+		t.Helper()
+
+		wantX, wantN, wantErr := reference(input)
+		x, n, err := consumeTag(input)
+
+		assert.Equal(t, wantErr, err, "input: %x", input)
+		assert.Equal(t, wantX, x, "input: %x", input)
+		assert.LessOrEqual(t, n, len(input), "input: %x", input)
+
+		if wantErr == nil {
+			assert.Equal(t, wantN, n, "input: %x", input)
+		}
+	}
+
+	t.Run("Fixed", func(t *testing.T) {
+		tests := []struct {
+			input    []byte
+			value    uint64
+			consumed int
+			err      error
+		}{
+			{[]byte{0}, 0, 1, nil},
+			{[]byte{127, 5}, 127, 1, nil},
+			{[]byte{128, 1}, 128, 2, nil},
+			{[]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 1}, 1<<64 - 1, 10, nil},
+			{[]byte{}, 0, 0, errVarintTerminated},
+			{[]byte{129}, 1, 1, errVarintTerminated},
+			{[]byte{128, 0}, 0, 2, errVarintNotMinimal},
+			{[]byte{255, 128, 0}, 127, 3, errVarintNotMinimal},
+			{[]byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 2}, 1<<63 - 1, 10, errVarintOverflow},
+			{[]byte{128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 1}, 0, 10, errVarintOverflow},
+		}
+
+		for _, test := range tests {
+			x, n, err := consumeTag(test.input)
+
+			assert.Equal(t, test.err, err, "input: %x", test.input)
+			assert.Equal(t, test.value, x, "input: %x", test.input)
+			assert.Equal(t, test.consumed, n, "input: %x", test.input)
+		}
+	})
+
+	t.Run("AllTwoBytes", func(t *testing.T) {
+		for i := range 1 << 16 {
+			check(t, []byte{byte(i >> 8), byte(i)})
+			check(t, []byte{byte(i)})
+		}
+	})
+
+	t.Run("Fuzz", func(t *testing.T) {
+		f := fuzz.New().NilChance(0).NumElements(0, 12)
+
+		var (
+			input []byte
+			value uint64
+		)
+
+		for range 100000 {
+			f.Fuzz(&input)
+			check(t, input)
+
+			f.Fuzz(&value)
+			check(t, appendVarint(nil, value))
+		}
+	})
+}

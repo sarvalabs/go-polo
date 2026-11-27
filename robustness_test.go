@@ -15,11 +15,11 @@ import (
 // All of the decoder cases are reachable from untrusted wire data.
 
 // hexWire decodes a hex string into a wire
-func hexWire(t *testing.T, s string) []byte {
-	t.Helper()
+func hexWire(tb testing.TB, s string) []byte {
+	tb.Helper()
 
 	wire, err := hex.DecodeString(s)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
 	return wire
 }
@@ -69,7 +69,6 @@ func TestDepolorize_LoadLengthExceedsData(t *testing.T) {
 		"array":  func() any { return new([2]uint64) },
 		"map":    func() any { return new(map[string]uint64) },
 		"struct": func() any { return new(struct{ A uint64 }) },
-		"bytes":  func() any { return new([]byte) },
 		"any":    func() any { return new(Any) },
 	}
 
@@ -77,7 +76,7 @@ func TestDepolorize_LoadLengthExceedsData(t *testing.T) {
 		for targetName, target := range targets {
 			t.Run(wireName+"/"+targetName, func(t *testing.T) {
 				object := target()
-				err := Depolorize(object, wire, PackedBytes())
+				err := Depolorize(object, wire)
 
 				// Any accepts the wire as is, every other target has to unpack it
 				if _, isAny := object.(*Any); isAny {
@@ -107,7 +106,7 @@ func TestDepolorize_ElementOffsetOutOfBounds(t *testing.T) {
 		target any
 	}{
 		{"offset past body", hexWire(t, "0e2f0313"), new([]uint64)},
-		{"offset before current element", hexWire(t, "0e2f23030e0f"), new([]uint64)},
+		{"offset before current element", hexWire(t, "0e3f03130305"), new([]uint64)},
 		{"last element past body", hexWire(t, "0e1f33"), new([]uint64)},
 		{"first element past body", hexWire(t, "0e1f33"), new([2]uint64)},
 		{"nested pack", hexWire(t, "0e1f0e1f33"), new([][]uint64)},
@@ -116,13 +115,12 @@ func TestDepolorize_ElementOffsetOutOfBounds(t *testing.T) {
 			A string
 			B uint64
 		})},
-		{"packed bytes", hexWire(t, "0e2f0313"), new([]byte)},
 		{"doc wire", hexWire(t, "0d2f0635"), new(Document)},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := Depolorize(test.target, test.wire, PackedBytes())
+			err := Depolorize(test.target, test.wire)
 			require.ErrorContains(t, err, "malformed tag: element offset out of bounds")
 
 			var tagErr MalformedTagError
@@ -153,32 +151,31 @@ func TestDepolorize_NullMapKey(t *testing.T) {
 	type Key struct{ A uint64 }
 
 	t.Run("byte array key", func(t *testing.T) {
-		// pack of a null key and a null value
+		// pack of a null key and a null value: a byte array key cannot be nil
 		var nulls map[[32]byte][32]byte
 
-		require.NoError(t, Depolorize(&nulls, hexWire(t, "0e2f0000")))
-		assert.Equal(t, map[[32]byte][32]byte{{}: {}}, nulls)
+		require.ErrorIs(t, Depolorize(&nulls, hexWire(t, "0e2f0000")), ErrNullValue)
 
 		// pack of a null key and the integer 0
 		var zero map[[32]byte]uint64
 
-		require.NoError(t, Depolorize(&zero, hexWire(t, "0e2f0003")))
-		assert.Equal(t, map[[32]byte]uint64{{}: 0}, zero)
+		require.ErrorIs(t, Depolorize(&zero, hexWire(t, "0e2f0003")), ErrNullValue)
 	})
 
 	t.Run("struct key", func(t *testing.T) {
+		// The encoder cannot order struct keys, so the decoder does not accept them either
 		var object map[Key]Key
 
-		require.NoError(t, Depolorize(&object, hexWire(t, "0e2f0000")))
-		assert.Equal(t, map[Key]Key{{}: {}}, object)
+		err := Depolorize(&object, hexWire(t, "0e2f0000"))
+		require.EqualError(t, err, "incompatible value error: unsupported type: polo.Key [struct]")
 	})
 
 	t.Run("pointer key", func(t *testing.T) {
 		// pack of a null key and the word "nil"
 		var object map[*uint64]string
 
-		require.NoError(t, Depolorize(&object, hexWire(t, "0e2f00066e696c")))
-		assert.Equal(t, map[*uint64]string{nil: "nil"}, object)
+		err := Depolorize(&object, hexWire(t, "0e2f00066e696c"))
+		require.EqualError(t, err, "incompatible value error: unsupported type: *uint64 [ptr]")
 	})
 }
 
@@ -189,38 +186,35 @@ func TestDepolorize_NamedByteElements(t *testing.T) {
 
 	type FlagArray [4]Flag
 
-	for _, options := range [][]EncodingOptions{{}, {PackedBytes()}} {
-		t.Run("slice", func(t *testing.T) {
-			wire, err := Polorize(Flags{1, 2, 3}, options...)
-			require.NoError(t, err)
+	t.Run("slice", func(t *testing.T) {
+		wire, err := Polorize(Flags{1, 2, 3})
+		require.NoError(t, err)
 
-			var flags Flags
+		var flags Flags
 
-			require.NoError(t, Depolorize(&flags, wire, options...))
-			assert.Equal(t, Flags{1, 2, 3}, flags)
+		require.NoError(t, Depolorize(&flags, wire))
+		assert.Equal(t, Flags{1, 2, 3}, flags)
 
-			// A null wire decodes into a nil slice
-			flags = Flags{9}
-			require.NoError(t, Depolorize(&flags, []byte{0}, options...))
-			assert.Nil(t, flags)
-		})
+		// A null wire decodes into a nil slice
+		flags = Flags{9}
+		require.NoError(t, Depolorize(&flags, []byte{0}))
+		assert.Nil(t, flags)
+	})
 
-		t.Run("array", func(t *testing.T) {
-			wire, err := Polorize(FlagArray{1, 2, 3, 4}, options...)
-			require.NoError(t, err)
+	t.Run("array", func(t *testing.T) {
+		wire, err := Polorize(FlagArray{1, 2, 3, 4})
+		require.NoError(t, err)
 
-			var flags FlagArray
+		var flags FlagArray
 
-			require.NoError(t, Depolorize(&flags, wire, options...))
-			assert.Equal(t, FlagArray{1, 2, 3, 4}, flags)
+		require.NoError(t, Depolorize(&flags, wire))
+		assert.Equal(t, FlagArray{1, 2, 3, 4}, flags)
 
-			// A null wire decodes into a zero array
-			var null FlagArray
+		// A null wire cannot be decoded into an array
+		var null FlagArray
 
-			require.NoError(t, Depolorize(&null, []byte{0}, options...))
-			assert.Equal(t, FlagArray{}, null)
-		})
-	}
+		require.ErrorIs(t, Depolorize(&null, []byte{0}), ErrNullValue)
+	})
 
 	t.Run("struct fields", func(t *testing.T) {
 		type Object struct {
@@ -238,21 +232,6 @@ func TestDepolorize_NamedByteElements(t *testing.T) {
 		require.NoError(t, Depolorize(&decoded, wire))
 		assert.Equal(t, object, decoded)
 	})
-}
-
-func TestDepolorize_DocStringMapNamedKey(t *testing.T) {
-	type Name string
-
-	object := map[Name]uint64{"a": 1, "b": 2}
-
-	wire, err := Polorize(object, DocStringMaps())
-	require.NoError(t, err)
-	require.Equal(t, WireDoc, WireType(wire[0]&15))
-
-	var decoded map[Name]uint64
-
-	require.NoError(t, Depolorize(&decoded, wire, DocStringMaps()))
-	assert.Equal(t, object, decoded)
 }
 
 func TestPolorize_UnorderableMapKeys(t *testing.T) {
@@ -316,85 +295,76 @@ func (r *recursiveDepolorizable) Depolorize(depolorizer *Depolorizer) error {
 	return pack.Depolorize(r.Next)
 }
 
+// docNode is a DocumentStruct that holds a chain of documents
+type docNode struct{ Next *docNode }
+
+func (docNode) PoloDocument() {}
+
 func TestDepolorize_MaxDepth(t *testing.T) {
 	type Tree []Tree
 
 	type Node struct{ Next *Node }
 
-	t.Run("default limit", func(t *testing.T) {
+	t.Run("limit", func(t *testing.T) {
 		var tree Tree
+
+		// rs-polo has the same limit. Change both together
+		require.Equal(t, 1000, MaxDepth)
 
 		// nestedPackWire(seed, n) is n+1 packs deep
-		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth-1)))
+		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, MaxDepth-1)))
 
-		err := Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth))
+		err := Depolorize(&tree, nestedPackWire(emptyPackWire, MaxDepth))
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
 	})
 
-	t.Run("custom limit", func(t *testing.T) {
-		var tree Tree
+	t.Run("encoder has no limit", func(t *testing.T) {
+		tree := Tree{}
+		for range MaxDepth {
+			tree = Tree{tree}
+		}
 
-		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, 2), MaxDepth(3)))
+		wire, err := Polorize(tree)
+		require.NoError(t, err)
 
-		err := Depolorize(&tree, nestedPackWire(emptyPackWire, 3), MaxDepth(3))
-		require.ErrorIs(t, err, ErrMaxDepthExceeded)
-	})
+		var decoded Tree
 
-	t.Run("no limit", func(t *testing.T) {
-		var tree Tree
-
-		require.NoError(t, Depolorize(&tree, nestedPackWire(emptyPackWire, DefaultMaxDepth), MaxDepth(0)))
+		require.ErrorIs(t, Depolorize(&decoded, wire), ErrMaxDepthExceeded)
 	})
 
 	t.Run("recursive struct", func(t *testing.T) {
 		var node Node
 
-		require.NoError(t, Depolorize(&node, nestedPackWire(nullPackWire, 2), MaxDepth(3)))
+		require.NoError(t, Depolorize(&node, nestedPackWire(nullPackWire, MaxDepth-1)))
 		require.NotNil(t, node.Next.Next)
 
-		err := Depolorize(&node, nestedPackWire(nullPackWire, 3), MaxDepth(3))
+		err := Depolorize(&node, nestedPackWire(nullPackWire, MaxDepth))
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
 	})
 
 	t.Run("document structs", func(t *testing.T) {
 		// Every level is a document with the level below as its "Next" value
-		wire, err := Polorize(Node{}, DocStructs())
+		wire, err := Polorize(docNode{})
 		require.NoError(t, err)
 
-		for i := 0; i < 2; i++ {
+		for i := 0; i < MaxDepth-1; i++ {
 			wire = Document{"Next": wire}.Bytes()
 		}
 
-		var node Node
+		var node docNode
 
-		require.NoError(t, Depolorize(&node, wire, DocStructs(), MaxDepth(3)))
+		require.NoError(t, Depolorize(&node, wire))
 		require.NotNil(t, node.Next.Next)
 
-		err = Depolorize(&node, Document{"Next": wire}.Bytes(), DocStructs(), MaxDepth(3))
-		require.ErrorIs(t, err, ErrMaxDepthExceeded)
-	})
-
-	t.Run("document string maps", func(t *testing.T) {
-		type Maps map[string]Maps
-
-		wire := Document{}.Bytes()
-		for i := 0; i < 2; i++ {
-			wire = Document{"k": wire}.Bytes()
-		}
-
-		var maps Maps
-
-		require.NoError(t, Depolorize(&maps, wire, DocStringMaps(), MaxDepth(3)))
-
-		err := Depolorize(&maps, Document{"k": wire}.Bytes(), DocStringMaps(), MaxDepth(3))
+		err = Depolorize(&node, Document{"Next": wire}.Bytes())
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
 	})
 
 	t.Run("manual decoding", func(t *testing.T) {
-		depolorizer, err := NewDepolorizer(nestedPackWire(emptyPackWire, 5), MaxDepth(3))
+		depolorizer, err := NewDepolorizer(nestedPackWire(emptyPackWire, MaxDepth+2))
 		require.NoError(t, err)
 
-		for i := 0; i < 3; i++ {
+		for i := 0; i < MaxDepth; i++ {
 			depolorizer, err = depolorizer.DepolorizePacked()
 			require.NoError(t, err)
 		}
@@ -406,44 +376,12 @@ func TestDepolorize_MaxDepth(t *testing.T) {
 	t.Run("depolorizable", func(t *testing.T) {
 		var object recursiveDepolorizable
 
-		require.NoError(t, Depolorize(&object, nestedPackWire(nullPackWire, 2), MaxDepth(3)))
+		require.NoError(t, Depolorize(&object, nestedPackWire(nullPackWire, MaxDepth-1)))
 		require.NotNil(t, object.Next.Next)
 
-		err := Depolorize(&object, nestedPackWire(nullPackWire, 3), MaxDepth(3))
+		err := Depolorize(&object, nestedPackWire(nullPackWire, MaxDepth))
 		require.ErrorIs(t, err, ErrMaxDepthExceeded)
 	})
-}
-
-func TestDepolorize_DepolorizableInheritsOptions(t *testing.T) {
-	// The Depolorizer handed to a custom Depolorizable inherits the options of its parent
-	type Inner struct{ A uint64 }
-
-	wire, err := Polorize(Inner{7}, DocStructs())
-	require.NoError(t, err)
-
-	// Wrap the document encoded struct as the only field of an outer struct
-	polorizer := NewPolorizer()
-	require.NoError(t, polorizer.PolorizeAny(wire))
-
-	var object struct{ In optionsDepolorizable }
-
-	require.NoError(t, Depolorize(&object, polorizer.Packed(), DocStructs()))
-	assert.Equal(t, uint64(7), object.In.A)
-}
-
-// optionsDepolorizable is a custom Depolorizable that decodes a document encoded struct
-type optionsDepolorizable struct{ A uint64 }
-
-func (o *optionsDepolorizable) Depolorize(depolorizer *Depolorizer) error {
-	var inner struct{ A uint64 }
-
-	if err := depolorizer.Depolorize(&inner); err != nil {
-		return err
-	}
-
-	o.A = inner.A
-
-	return nil
 }
 
 func TestDepolorize_NestedStructFieldError(t *testing.T) {
@@ -470,13 +408,13 @@ func TestDepolorize_NestedStructFieldError(t *testing.T) {
 	})
 
 	t.Run("deep", func(t *testing.T) {
-		// A chain of 5000 nodes that ends with a word instead of a node
-		err := Depolorize(new(Node), nestedPackWire(wordPackWire, 5000))
+		// A chain of nodes at the nesting limit that ends with a word instead of a node
+		err := Depolorize(new(Node), nestedPackWire(wordPackWire, MaxDepth-1))
 		require.Error(t, err)
 
 		prefix := "incompatible wire: struct field [polo.Node.Next <*polo.Node>]: "
 		assert.True(t, strings.HasPrefix(err.Error(), prefix))
-		assert.Equal(t, 5001, strings.Count(err.Error(), prefix))
+		assert.Equal(t, MaxDepth, strings.Count(err.Error(), prefix))
 		assert.True(t, strings.HasSuffix(err.Error(), "unexpected wiretype 'word'. expected one of: {null, pack}"))
 	})
 }
@@ -506,7 +444,7 @@ type fuzzObject struct {
 }
 
 // FuzzDepolorizeNoPanic checks that decoding arbitrary bytes into any
-// supported type (with any options) returns an error instead of panicking
+// supported type returns an error instead of panicking
 func FuzzDepolorizeNoPanic(f *testing.F) {
 	seeds := [][]byte{
 		{0},
@@ -527,8 +465,6 @@ func FuzzDepolorizeNoPanic(f *testing.F) {
 		f.Add(seed)
 	}
 
-	options := [][]EncodingOptions{{}, {PackedBytes(), DocStructs(), DocStringMaps(), MaxDepth(64)}}
-
 	f.Fuzz(func(t *testing.T, wire []byte) {
 		targets := []any{
 			new(bool), new(string), new(uint8), new(int8), new(uint64), new(int64), new(float32), new(float64),
@@ -538,13 +474,11 @@ func FuzzDepolorizeNoPanic(f *testing.F) {
 		}
 
 		for _, target := range targets {
-			for _, opts := range options {
-				_ = Depolorize(target, wire, opts...)
-			}
+			_ = Depolorize(target, wire)
 		}
 
 		// Walk the wire manually: unpack every compound element recursively
-		depolorizer, err := NewDepolorizer(wire, MaxDepth(64))
+		depolorizer, err := NewDepolorizer(wire)
 		if err != nil {
 			return
 		}

@@ -120,3 +120,13 @@ func TestKeySort(t *testing.T) {
 		})
 	}
 }
+
+func TestValueSort_Interface(t *testing.T) {
+	// Values of an interface type (the elements of a []any) are compared by their underlying values
+	values := reflect.ValueOf([]any{"b", "a"})
+	keys := []reflect.Value{values.Index(0), values.Index(1)}
+
+	assert.False(t, ValueSort(keys)(0, 1))
+	assert.True(t, ValueSort(keys)(1, 0))
+	assert.Equal(t, 1, ValueCmp(keys[0], keys[1]))
+}

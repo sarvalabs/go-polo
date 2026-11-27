@@ -21,7 +21,8 @@ const (
 
 	// WireRaw represents some POLO encoded bytes
 	WireRaw WireType = 5
-	// WireWord represents UTF-8 encoded string/bytes
+	// WireWord carries a byte string. Decoded into a Go string it must be valid UTF-8;
+	// decoded into []byte, [N]byte, Raw or Any it may hold any bytes.
 	WireWord WireType = 6
 	// WireFloat represents some floating point data encoded in the IEEE754 standard. (floats)
 	WireFloat WireType = 7

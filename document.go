@@ -15,9 +15,12 @@ import (
 //
 // Returns an error if the object is not a supported type, is a nil pointer
 // or if any of the element/field types cannot be serialized with Polorize()
-func PolorizeDocument(object any, options ...EncodingOptions) (Document, error) {
-	polorizer := NewPolorizer(options...)
-
+//
+// Each value of the Document has the form of its own type. For example, a struct in a value is a document
+// only if its type is a DocumentStruct. For a DocumentStruct object, the bytes of the Document are the
+// same as Polorize(object) and decode into the object. For a struct object that is not a DocumentStruct,
+// the Document is a conversion: decode its bytes into a Document and use Get for each value.
+func PolorizeDocument(object any) (Document, error) {
 	value := reflect.ValueOf(object)
 	if value.Kind() == reflect.Ptr {
 		if value.IsNil() {
@@ -35,11 +38,11 @@ func PolorizeDocument(object any, options ...EncodingOptions) (Document, error) 
 			return nil, errors.New("could not encode into document: unsupported type: map type with non string key")
 		}
 
-		return polorizer.polorizeStrMapIntoDoc(value)
+		return strMapIntoDoc(value)
 
 	// Structs
 	case reflect.Struct:
-		return polorizer.polorizeStructIntoDoc(value)
+		return structIntoDoc(value)
 
 	default:
 		return nil, errors.New("could not encode into document: unsupported type")
@@ -55,7 +58,11 @@ func (doc Document) Size() int {
 	return len(doc)
 }
 
-// Bytes returns the POLO wire representation of a Document
+// Bytes returns the POLO wire representation of a Document.
+//
+// Bytes has no error result, so it does not check the keys. The keys must be valid UTF-8, or the
+// decoder rejects the wire (ErrInvalidUTF8). Polorize encodes a Document into the same wire and
+// returns an error for a key that is not valid UTF-8.
 func (doc Document) Bytes() []byte {
 	polorizer := NewPolorizer()
 	polorizer.PolorizeDocument(doc)
@@ -96,9 +103,9 @@ func (doc Document) Get(key string, object any) error {
 // Set inserts some object for some given key into a Document.
 // The given object is encoded into its POLO form and inserted, overwriting any existing data.
 // Returns an error if the given object cannot be serialized with Polorize().
-func (doc Document) Set(key string, object any, options ...EncodingOptions) error {
+func (doc Document) Set(key string, object any) error {
 	// Polorize the object into its wire form. Return any error that occurs
-	data, err := Polorize(object, options...)
+	data, err := Polorize(object)
 	if err != nil {
 		return fmt.Errorf("document value could not be encoded for key '%v': %w", key, err)
 	}

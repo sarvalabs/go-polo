@@ -35,6 +35,14 @@ func TestReadbuffer(t *testing.T) {
 	}
 }
 
+func TestReadbuffer_MalformedTag(t *testing.T) {
+	// The tag is a varint. No data, and a varint without its last byte, are errors.
+	for _, data := range [][]byte{{}, {0x80}} {
+		_, err := newreadbuffer(data)
+		assert.IsType(t, MalformedTagError{}, err)
+	}
+}
+
 func TestLoadReader(t *testing.T) {
 	load, err := newpackbuffer(
 		[]byte{6, 51, 86},
